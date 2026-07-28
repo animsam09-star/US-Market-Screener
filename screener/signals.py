@@ -14,10 +14,13 @@ from . import axes
 from .axes import Signal
 from .net import FetchError
 from .sources import (
+    CONCEPTS,
     edgar_fts,
     fedreg_signal,
+    financials_snapshot,
     fred_series,
     sec_company_facts,
+    snapshot_quarterly,
     xbrl_quarterly,
     yahoo_prices,
 )
@@ -158,20 +161,30 @@ def aggregate_financials(tickers: list[str], tmap: dict[str, int],
     """
     notes: list[str] = []
     per: dict[str, dict] = {}
-    missing = []
+    missing, from_snap = [], []
     for t in tickers:
         cik = tmap.get(t.upper())
-        if not cik:
-            missing.append(t)
+        facts = None
+        if cik:
+            try:
+                facts = sec_company_facts(cik)
+            except FetchError:
+                facts = None
+        if facts is not None:
+            per[t] = {c: xbrl_quarterly(facts, c) for c in CONCEPTS}
             continue
-        try:
-            facts = sec_company_facts(cik)
-        except FetchError:
+        # SEC 가 막혔으면 동봉 스냅샷으로. 재무는 분기에 한 번 바뀌므로
+        # 며칠 낡아도 신호가 달라지지 않는다.
+        snap = {c: snapshot_quarterly(t, c) for c in CONCEPTS}
+        if any(snap.values()):
+            per[t] = snap
+            from_snap.append(t)
+        else:
             missing.append(t)
-            continue
-        per[t] = {c: xbrl_quarterly(facts, c) for c in
-                  ("revenue", "ebit", "capex", "dep", "inventory",
-                   "ppe_gross", "accum_dep", "ppe_net", "cash", "debt", "shares")}
+    if from_snap:
+        gen = (financials_snapshot().get("generated") or "?")
+        notes.append(f"동봉 재무 스냅샷 사용({gen} 기준) {len(from_snap)}개사: "
+                     f"{', '.join(from_snap)}")
     if missing:
         notes.append(f"SEC 재무 미확보: {', '.join(missing)}")
     if not per:

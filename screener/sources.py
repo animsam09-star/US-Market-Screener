@@ -119,6 +119,43 @@ def sec_ticker_map() -> dict[str, int]:
     raise FetchError("티커→CIK 매핑을 원격에서도 동봉 사본에서도 얻지 못함")
 
 
+# 그룹 재무 집계에 쓰는 개념들. 스냅샷도 이 목록으로 뽑는다.
+CONCEPTS = ("revenue", "ebit", "capex", "dep", "inventory",
+            "ppe_gross", "accum_dep", "ppe_net", "cash", "debt", "shares")
+
+_SNAPSHOT = Path(__file__).resolve().parent.parent / "data" / "financials.json"
+_snap_cache: dict | None = None
+
+
+def financials_snapshot() -> dict:
+    """사내 PC 에서 뽑아 동봉한 재무 스냅샷.
+
+    SEC 재무는 분기에 한 번 바뀐다. 매일 원격에서 받을 이유가 없고, SEC 는
+    데이터센터 IP 를 막는다. export_financials.py 로 갱신한다.
+    """
+    global _snap_cache
+    if _snap_cache is None:
+        if _SNAPSHOT.exists():
+            import json as _json
+            _snap_cache = _json.loads(_SNAPSHOT.read_text(encoding="utf-8"))
+        else:
+            _snap_cache = {}
+    return _snap_cache
+
+
+def snapshot_quarterly(ticker: str, concept: str) -> dict[tuple[int, int], float]:
+    """스냅샷에서 분기 시계열을 꺼낸다. 없으면 빈 dict."""
+    co = (financials_snapshot().get("companies") or {}).get(ticker.upper()) or {}
+    out: dict[tuple[int, int], float] = {}
+    for k, v in (co.get(concept) or {}).items():
+        try:
+            y, q = k.split("Q")
+            out[(int(y), int(q))] = float(v)
+        except (ValueError, AttributeError):
+            continue
+    return out
+
+
 def sec_company_facts(cik: int) -> dict:
     url = f"https://data.sec.gov/api/xbrl/companyfacts/CIK{cik:010d}.json"
     return fetch_json(url, ttl_hours=_SEC_TTL)
