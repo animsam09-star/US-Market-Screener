@@ -21,6 +21,11 @@ concurrency:
 jobs:
   build:
     runs-on: ubuntu-latest
+    # secrets 컨텍스트는 step 의 if 에서 쓸 수 없다(Unrecognized named-value).
+    # 잡 레벨 env 로 한 번 받아야 step if 에서 참조할 수 있다.
+    env:
+      CF_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CF_ACCOUNT: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
     steps:
       - uses: actions/checkout@v4
 
@@ -81,11 +86,8 @@ jobs:
 
       # 비공개 배포. Cloudflare Access 가 앞단에서 이메일 인증을 요구하므로
       # URL 을 알아도 등록된 계정이 아니면 열 수 없다.
-      #
-      # 조건은 secrets 를 직접 본다. 앞서 step 레벨 env 를 if 에서 참조했다가
-      # 토큰이 없는데도 배포가 실행돼 워크플로 전체가 실패했다.
       - name: Cloudflare Pages 배포
-        if: ${{ secrets.CLOUDFLARE_API_TOKEN != '' && secrets.CLOUDFLARE_ACCOUNT_ID != '' }}
+        if: env.CF_TOKEN != '' && env.CF_ACCOUNT != ''
         continue-on-error: true
         uses: cloudflare/wrangler-action@v3
         with:
@@ -94,5 +96,5 @@ jobs:
           command: pages deploy out --project-name=us-market-screener --branch=main
 
       - name: 배포 안내
-        if: ${{ secrets.CLOUDFLARE_API_TOKEN == '' }}
+        if: env.CF_TOKEN == ''
         run: echo "Cloudflare 시크릿 미설정 — 배포 생략. 결과는 아티팩트 screener-html 로 받으세요."

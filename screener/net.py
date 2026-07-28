@@ -28,7 +28,9 @@ CACHE_DIR = ROOT / "cache"
 CACHE_DIR.mkdir(exist_ok=True)
 
 # SEC 는 연락처가 담긴 User-Agent 를 요구한다. 없으면 403.
-UA = os.environ.get("SCREENER_UA", "DaolResearch RA animsam09@gmail.com")
+# 미설정 시크릿은 환경변수를 '없음'이 아니라 '빈 문자열'로 만든다 —
+# os.environ.get 의 기본값이 안 먹으므로 빈 값도 폴백으로 넘긴다.
+UA = os.environ.get("SCREENER_UA", "").strip() or "DaolResearch RA animsam09@gmail.com"
 HEADERS = {"User-Agent": UA, "Accept-Encoding": "gzip, deflate"}
 
 _last_call: dict[str, float] = {}
