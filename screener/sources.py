@@ -12,6 +12,7 @@ import io
 import re
 import urllib.parse
 import zipfile
+from pathlib import Path
 from datetime import date, datetime, timedelta
 
 from .net import FetchError, fetch, fetch_json, fetch_text
@@ -91,9 +92,31 @@ TAGS = {
 }
 
 
+_VENDORED_TICKERS = Path(__file__).resolve().parent.parent / "data" / "ticker_cik.json"
+
+
 def sec_ticker_map() -> dict[str, int]:
-    d = fetch_json("https://www.sec.gov/files/company_tickers.json", ttl_hours=24 * 14)
-    return {v["ticker"].upper(): int(v["cik_str"]) for v in d.values()}
+    """티커 -> CIK.
+
+    SEC 는 데이터센터 IP(GitHub Actions 러너 등)에 403 을 내는 일이 있다.
+    이 매핑은 거의 변하지 않는데도 실패하면 실행 전체가 죽었다. 그래서
+    저장소에 사본을 동봉하고, 원격 조회는 갱신 시도로만 쓴다.
+    """
+    try:
+        d = fetch_json("https://www.sec.gov/files/company_tickers.json", ttl_hours=24 * 14)
+        remote = {v["ticker"].upper(): int(v["cik_str"]) for v in d.values()}
+        if len(remote) > 1000:
+            return remote
+    except Exception:
+        pass
+
+    if _VENDORED_TICKERS.exists():
+        import json as _json
+        m = _json.loads(_VENDORED_TICKERS.read_text(encoding="utf-8"))
+        print(f"[주의] SEC 티커 목록 조회 실패 — 동봉 사본 사용 ({len(m):,}개, "
+              f"{_VENDORED_TICKERS.name})")
+        return {k.upper(): int(v) for k, v in m.items()}
+    raise FetchError("티커→CIK 매핑을 원격에서도 동봉 사본에서도 얻지 못함")
 
 
 def sec_company_facts(cik: int) -> dict:

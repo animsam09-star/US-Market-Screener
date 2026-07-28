@@ -96,6 +96,11 @@ def fetch(url: str, *, ttl_hours: float = 24.0, json_body: object | None = None,
                 r = requests.get(url, headers=HEADERS, timeout=timeout)
             if r.status_code == 404:
                 raise FetchError(f"404 {url}")
+            if r.status_code in (403, 451):
+                # 정책 차단이지 일시 오류가 아니다. 재시도해도 안 열린다.
+                # SEC 는 데이터센터 IP(클라우드 러너)에 403 을 내는 일이 있다.
+                raise FetchError(f"{r.status_code} 접근 거부 {url} "
+                                 f"(UA={UA[:40]!r}) — 재시도 생략")
             r.raise_for_status()
             cp.write_bytes(r.content)
             return r.content
