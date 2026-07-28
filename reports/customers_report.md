@@ -1,6 +1,6 @@
 # 고객군 자동 지정 리포트
 
-생성: 2026-07-28 08:11:30 UTC · 대상 연도: 2024
+생성: 2026-07-28 08:16:21 UTC · 대상 연도: 2024
 
 ## 1. 사용 가능한 산업연관표
 
@@ -118,16 +118,16 @@
 
 | 고객 산업 | 코드 | 비중 | FRED 지표 |
 |---|---|---|---|
-| Construction | `23` | 29.3% | IPCONGD |
-| Nonresidential private fixed investment in equipment | `F02E` | 23.8% | — |
-| Machinery | `333` | 7.2% | IPG333S |
-| Electrical equipment, appliances, and components | `335` | 5.5% | IPG335S |
-| Motor vehicles, bodies and trailers, and parts | `3361MV` | 5.4% | IPG3361T3S |
-| Residential private fixed investment | `F02R` | 5.3% | — |
-| Miscellaneous professional, scientific, and technica | `5412OP` | 2.8% | — |
-| Wholesale trade | `42` | 2.6% | IPBUSEQ |
+| Construction | `23` | 41.4% | —  건설 — 실질 산출 지수 없음(건설지출은 명목) |
+| Machinery | `333` | 10.2% | IPG333S |
+| Electrical equipment, appliances, and components | `335` | 7.8% | IPG335S |
+| Motor vehicles, bodies and trailers, and parts | `3361MV` | 7.6% | IPG3361T3S |
+| Miscellaneous professional, scientific, and technica | `5412OP` | 3.9% | —  전문서비스 — 산업생산 지수 없음 |
+| Wholesale trade | `42` | 3.7% | —  도매 — 산업생산 지수 없음 |
+| Farms | `111CA` | 2.6% | — |
+| Fabricated metal products | `332` | 2.3% | IPG332S |
 
-제안 `customers.series`: **IPCONGD** (IPUTIL → IPCONGD)
+제안 `customers.series`: **IPG333S** (비중 10.2%, IPUTIL → IPG333S)
 
 ### 반도체 첨단패키징·후공정
 
@@ -135,33 +135,33 @@
 
 | 고객 산업 | 코드 | 비중 | FRED 지표 |
 |---|---|---|---|
-| Nonresidential private fixed investment in equipment | `F02E` | 47.0% | — |
-| Wholesale trade | `42` | 9.2% | IPBUSEQ |
-| Computer and electronic products | `334` | 6.5% | IPG334S |
-| Broadcasting and telecommunications | `513` | 5.3% | — |
-| Motor vehicles, bodies and trailers, and parts | `3361MV` | 4.2% | IPG3361T3S |
-| Management of companies and enterprises | `55` | 3.9% | — |
-| Other transportation equipment | `3364OT` | 3.3% | IPG3364T9S |
-| Miscellaneous professional, scientific, and technica | `5412OP` | 2.3% | — |
+| Wholesale trade | `42` | 17.3% | —  도매 — 산업생산 지수 없음 |
+| Computer and electronic products | `334` | 12.3% | IPG334S |
+| Broadcasting and telecommunications | `513` | 10.0% | —  방송·통신 — 산업생산 지수 없음 |
+| Motor vehicles, bodies and trailers, and parts | `3361MV` | 8.0% | IPG3361T3S |
+| Management of companies and enterprises | `55` | 7.3% | —  지주회사 — 산업 아님 |
+| Other transportation equipment | `3364OT` | 6.3% | IPG3364T9S |
+| Miscellaneous professional, scientific, and technica | `5412OP` | 4.3% | —  전문서비스 — 산업생산 지수 없음 |
+| Ambulatory health care services | `621` | 3.8% | — |
 
-제안 `customers.series`: **IPBUSEQ** (IPG3344S → IPBUSEQ)
+제안 `customers.series`: **IPG334S** (비중 12.3%, IPG3344S → IPG334S)
 
 ### 항공 애프터마켓·MRO
 
-공급 산업: `3361MV` Motor vehicles, bodies and trailers, and parts  (NAICS 3364 ← `IPG3364T9S`)
+공급 산업: `3364OT` Other transportation equipment  (NAICS 3364 ← `IPG3364T9S`)
 
 | 고객 산업 | 코드 | 비중 | FRED 지표 |
 |---|---|---|---|
-| Nonresidential private fixed investment in equipment | `F02E` | 48.7% | — |
-| Motor vehicles, bodies and trailers, and parts | `3361MV` | 31.9% | IPG3361T3S |
-| Administrative and support services | `561` | 3.1% | — |
-| Machinery | `333` | 1.9% | IPG333S |
-| Wholesale trade | `42` | 1.4% | IPBUSEQ |
-| Truck transportation | `484` | 1.3% | — |
-| Motor vehicle and parts dealers | `441` | 1.2% | — |
-| Other retail | `4A0` | 1.1% | — |
+| Other transportation equipment | `3364OT` | 88.5% | IPG3364T9S |
+| Other transportation and support activities | `487OS` | 2.7% | — |
+| Miscellaneous professional, scientific, and technica | `5412OP` | 2.1% | —  전문서비스 — 산업생산 지수 없음 |
+| Air transportation | `481` | 1.7% | —  항공운송 — 산업생산 지수 없음 |
+| Rail transportation | `482` | 1.5% | — |
+| Water transportation | `483` | 1.4% | — |
+| Motor vehicles, bodies and trailers, and parts | `3361MV` | 1.0% | IPG3361T3S |
+| Machinery | `333` | 0.4% | IPG333S |
 
-제안 `customers.series`: **IPG3361T3S** (IPG3364T9S → IPG3361T3S)
+제안 `customers.series`: **IPG3364T9S** (비중 88.5%, 그대로)
 
 ### 데이터센터 열관리
 
@@ -169,16 +169,16 @@
 
 | 고객 산업 | 코드 | 비중 | FRED 지표 |
 |---|---|---|---|
-| Nonresidential private fixed investment in equipment | `F02E` | 60.5% | — |
-| Construction | `23` | 10.2% | IPCONGD |
-| Motor vehicles, bodies and trailers, and parts | `3361MV` | 6.2% | IPG3361T3S |
-| Machinery | `333` | 6.1% | IPG333S |
-| Oil and gas extraction | `211` | 2.3% | IPMINE |
-| Food and beverage and tobacco products | `311FT` | 1.1% | — |
-| Administrative and support services | `561` | 1.1% | — |
-| Chemical products | `325` | 1.0% | IPG325S |
+| Construction | `23` | 25.9% | —  건설 — 실질 산출 지수 없음(건설지출은 명목) |
+| Motor vehicles, bodies and trailers, and parts | `3361MV` | 15.8% | IPG3361T3S |
+| Machinery | `333` | 15.4% | IPG333S |
+| Oil and gas extraction | `211` | 5.9% | IPMINE |
+| Food and beverage and tobacco products | `311FT` | 2.8% | — |
+| Administrative and support services | `561` | 2.8% | —  사업지원 서비스 — 산업생산 지수 없음 |
+| Chemical products | `325` | 2.5% | IPG325S |
+| Fabricated metal products | `332` | 2.5% | IPG332S |
 
-제안 `customers.series`: **IPCONGD** (IPG3341S → IPCONGD)
+제안 `customers.series`: **IPG3361T3S** (비중 15.8%, IPG3341S → IPG3361T3S)
 
 ### 정유·정제마진
 
@@ -186,16 +186,16 @@
 
 | 고객 산업 | 코드 | 비중 | FRED 지표 |
 |---|---|---|---|
-| Construction | `23` | 20.8% | IPCONGD |
-| Truck transportation | `484` | 14.5% | — |
-| Air transportation | `481` | 9.8% | — |
+| Construction | `23` | 20.8% | —  건설 — 실질 산출 지수 없음(건설지출은 명목) |
+| Truck transportation | `484` | 14.5% | —  트럭운송 — 산업생산 지수 없음 |
+| Air transportation | `481` | 9.8% | —  항공운송 — 산업생산 지수 없음 |
 | Utilities | `22` | 6.5% | IPUTIL |
 | Petroleum and coal products | `324` | 4.4% | IPG324S |
 | Other transportation and support activities | `487OS` | 4.0% | — |
 | Farms | `111CA` | 3.4% | — |
 | Chemical products | `325` | 3.1% | IPG325S |
 
-제안 `customers.series`: **IPCONGD** (IPG324S → IPCONGD)
+제안 없음 — 지표화 가능한 최상위 고객 `Utilities` 이 6.5% 에 불과해 전방수요를 대표하지 못한다. 현재 값 `IPG324S` 유지 권장.
 
 ### 원자력 연료주기
 
@@ -207,12 +207,12 @@
 | Utilities | `22` | 8.6% | IPUTIL |
 | Food services and drinking places | `722` | 7.3% | — |
 | Other retail | `4A0` | 4.4% | — |
-| Wholesale trade | `42` | 4.0% | IPBUSEQ |
-| Construction | `23` | 3.8% | IPCONGD |
+| Wholesale trade | `42` | 4.0% | —  도매 — 산업생산 지수 없음 |
+| Construction | `23` | 3.8% | —  건설 — 실질 산출 지수 없음(건설지출은 명목) |
 | Chemical products | `325` | 3.6% | IPG325S |
 | Farms | `111CA` | 3.1% | — |
 
-제안 `customers.series`: **IPUTIL** (그대로)
+제안 없음 — 지표화 가능한 최상위 고객 `Utilities` 이 8.6% 에 불과해 전방수요를 대표하지 못한다. 현재 값 `IPUTIL` 유지 권장.
 
 ### 철강·특수강
 
@@ -225,28 +225,28 @@
 | Motor vehicles, bodies and trailers, and parts | `3361MV` | 14.6% | IPG3361T3S |
 | Machinery | `333` | 10.7% | IPG333S |
 | Electrical equipment, appliances, and components | `335` | 7.4% | IPG335S |
-| Construction | `23` | 2.5% | IPCONGD |
+| Construction | `23` | 2.5% | —  건설 — 실질 산출 지수 없음(건설지출은 명목) |
 | Oil and gas extraction | `211` | 2.4% | IPMINE |
 | Other transportation equipment | `3364OT` | 1.8% | IPG3364T9S |
 
-제안 `customers.series`: **IPG332S** (그대로)
+제안 `customers.series`: **IPG332S** (비중 27.4%, 그대로)
 
 ### 방산·탄약
 
-공급 산업: `3361MV` Motor vehicles, bodies and trailers, and parts  (NAICS 3364 ← `IPG3364T9S`)
+공급 산업: `3364OT` Other transportation equipment  (NAICS 3364 ← `IPG3364T9S`)
 
 | 고객 산업 | 코드 | 비중 | FRED 지표 |
 |---|---|---|---|
-| Nonresidential private fixed investment in equipment | `F02E` | 48.7% | — |
-| Motor vehicles, bodies and trailers, and parts | `3361MV` | 31.9% | IPG3361T3S |
-| Administrative and support services | `561` | 3.1% | — |
-| Machinery | `333` | 1.9% | IPG333S |
-| Wholesale trade | `42` | 1.4% | IPBUSEQ |
-| Truck transportation | `484` | 1.3% | — |
-| Motor vehicle and parts dealers | `441` | 1.2% | — |
-| Other retail | `4A0` | 1.1% | — |
+| Other transportation equipment | `3364OT` | 88.5% | IPG3364T9S |
+| Other transportation and support activities | `487OS` | 2.7% | — |
+| Miscellaneous professional, scientific, and technica | `5412OP` | 2.1% | —  전문서비스 — 산업생산 지수 없음 |
+| Air transportation | `481` | 1.7% | —  항공운송 — 산업생산 지수 없음 |
+| Rail transportation | `482` | 1.5% | — |
+| Water transportation | `483` | 1.4% | — |
+| Motor vehicles, bodies and trailers, and parts | `3361MV` | 1.0% | IPG3361T3S |
+| Machinery | `333` | 0.4% | IPG333S |
 
-제안 `customers.series`: **IPG3361T3S** (없음 → IPG3361T3S)
+제안 `customers.series`: **IPG3364T9S** (비중 88.5%, 없음 → IPG3364T9S)
 
 ## 4. 이 리포트가 못 하는 것
 
