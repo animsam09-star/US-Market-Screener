@@ -289,12 +289,33 @@ def f12_snapshot_fallback():
     check("F12 키가 (연,분기) 튜플", all(isinstance(k, tuple) and len(k) == 2 for k in q))
 
 
+# ---------------------------------------------------------------- F13
+def f13_self_reference_excluded():
+    """자기 산업 지수로 자기 매출을 설명하면 순환이다.
+
+    사고: BEA 요약 코드가 항공기와 부품을 한 덩어리로 묶어, 항공 애프터마켓의
+    1위 '고객'이 자기 산업(88.5%)으로 나왔다. 그대로 쓰면 낙수 축이 순환한다.
+    """
+    from screener.bea import downstream_of
+
+    data = [{"RowCode": "3364OT", "ColCode": "3364OT", "ColDescr": "Other transportation equipment", "DataValue": "885"},
+            {"RowCode": "3364OT", "ColCode": "481", "ColDescr": "Air transportation", "DataValue": "17"},
+            {"RowCode": "3364OT", "ColCode": "333", "ColDescr": "Machinery", "DataValue": "98"}]
+    r = downstream_of(data, "3364OT")
+    top_code = r[0][0]
+    check("F13 자기 산업이 표에는 남는다", top_code == "3364OT", str(top_code))
+    # 제안 로직에서 걸러지는지는 discover_customers 쪽 규칙이므로 여기선 존재만 확인
+    check("F13 외부 고객도 함께 나온다",
+          {c for c, _, _ in r} == {"3364OT", "481", "333"}, str([c for c, _, _ in r]))
+
+
 def main() -> int:
     for fn in [f1_ytd_differencing, f2_no_economy_wide_fallback, f3_bea_result_shapes,
                f4_bea_final_demand_excluded, f5_naics_matching_direction,
                f6_circuit_breaker, f7_empty_secret_fallback, f8_catalyst_scoping,
                f9_inventory_covid_window, f10_newtech_sample_floor,
-               f11_vendored_ticker_fallback, f12_snapshot_fallback]:
+               f11_vendored_ticker_fallback, f12_snapshot_fallback,
+               f13_self_reference_excluded]:
         try:
             fn()
         except Exception as e:

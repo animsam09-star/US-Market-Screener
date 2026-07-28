@@ -133,17 +133,27 @@ GitHub Actions 러너는 사내망 밖이라 이 문제가 없다.
 ## 자동 갱신 · 외부 접근
 
 `.github/workflows/update.yml` 이 평일 미국장 마감 후 하루 한 번 돌면서 대시보드를
-다시 만든다. 결과는 두 곳에서 볼 수 있다.
+다시 만든다.
 
-- **GitHub Pages** — 어디서든 URL로 열람
-- **Actions 아티팩트** — Pages를 안 쓰는 경우 `screener-html` 다운로드
+**GitHub Pages 는 쓰지 않는다.** 접근제어되는 Pages 는 Enterprise 전용이라,
+무료·Pro 에서 Pages 를 켜면 사이트가 공개된다. 어떤 테마를 어떤 논리로 보는지가
+그대로 노출되므로 리서치 용도에 맞지 않는다.
+
+대신 **Cloudflare Pages + Cloudflare Access** 를 쓴다. URL 을 알아도 등록된
+이메일의 일회용 코드 인증을 통과해야 열린다. Cloudflare 시크릿이 없으면 배포
+단계는 건너뛰고 **Actions 아티팩트**(`screener-html`)로 받을 수 있다.
 
 필요한 저장소 시크릿 (Settings → Secrets and variables → Actions):
 
 | 이름 | 필수 | 용도 |
 |---|---|---|
-| `BEA_API_KEY` | 선택 | 산업연관표 기반 고객군 자동 지정 |
 | `SCREENER_UA` | 권장 | SEC 가 요구하는 연락처 포함 User-Agent. 없으면 403 위험 |
+| `BEA_API_KEY` | 선택 | 산업연관표 기반 고객군 자동 지정 |
+| `CLOUDFLARE_API_TOKEN` | 선택 | 비공개 배포 |
+| `CLOUDFLARE_ACCOUNT_ID` | 선택 | 비공개 배포 |
+
+`reports/run_status.md` 에 매 실행의 시각·커밋·BEA 단계 결과가 **항상** 기록된다.
+결과가 같아도 커밋되므로, "실행이 안 됐다"와 "결과가 같다"를 구별할 수 있다.
 
 ---
 

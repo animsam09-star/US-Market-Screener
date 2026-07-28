@@ -172,19 +172,29 @@ def main() -> int:
         lines += [f"공급 산업: `{rc}` {rname}  (NAICS {naics} ← `{src}`)", "",
                   "| 고객 산업 | 코드 | 비중 | FRED 지표 |", "|---|---|---|---|"]
         best_series, best_share, best_name = None, 0.0, ""
+        self_share = 0.0
         for c, n, share in tops:
             fr = BEA_TO_FRED.get(c, "")
             note = "" if fr else NO_REAL_INDEX.get(c, "")
+            if c == rc:
+                # 자기 산업으로의 판매(부품→조립). 실제 거래지만 ①낙수 축에는
+                # 못 쓴다 — 자기 산업 지수로 자기 매출을 설명하면 순환이다.
+                self_share = share
+                note = note or "자기 산업 — 순환이라 낙수 축에 못 씀"
+                fr = ""
             if fr and not best_series:
                 best_series, best_share, best_name = fr, share, n
             lines.append(f"| {n[:52]} | `{c}` | {share * 100:.1f}% | "
                          f"{fr or ('—  ' + note if note else '—')} |")
         lines.append("")
+        if self_share > 0:
+            lines += [f"자기 산업 내 거래 {self_share * 100:.1f}% — 후보에서 제외했다.", ""]
 
         cur = (th.get("customers") or {}).get("series")
         if not best_series:
-            lines += ["상위 고객이 전부 실질 산출 지수가 없는 부문이다 — "
-                      "①낙수 축은 이 테마에서 자동 지정할 수 없다.", ""]
+            lines += ["지표화 가능한 외부 고객 산업이 없다 — "
+                      "①낙수 축은 이 테마에서 자동 지정할 수 없다. "
+                      "현재 값 유지 권장.", ""]
         elif best_share < 0.10:
             # 1위 매핑 가능 고객이 10% 도 안 되면 그 지표로 전방수요를 대표할 수 없다
             lines += [f"제안 없음 — 지표화 가능한 최상위 고객 `{best_name[:40]}` 이 "
