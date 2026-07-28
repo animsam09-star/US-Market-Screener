@@ -1,0 +1,156 @@
+# =============================================================================
+#  테마 / 밸류체인 정의
+# =============================================================================
+#  판별식은 설계_촉매판별.md 참조. 각 축은 주장·확증·기각 3요소로 판정하며,
+#  기각에 걸린 축은 점수 0이 아니라 '기각 + 사유'로 화면에 남는다.
+#
+#  tickers      이 테마로 돈 버는 회사
+#  customers    이들의 고객. ①낙수·④교체주기는 여기서 측정한다 —
+#               전력기기가 오르는 이유는 전력기기 산업생산이 아니라
+#               유틸리티/데이터센터의 설비가 늙고 증설이 밀려서다.
+#                 tickers: 고객 상장사 (④ 설비 소진율·억압된 교체)
+#                 series:  고객 산업의 실질 활동 지표 (① 전이 실증)
+#               ※ discover_customers.py 로 자동 채울 수 있고, 아래 값은 수정 가능
+#
+#  fred:
+#    industrial_production  전방수요 Q            ②확증
+#    capacity_utilization   가동률                ②주장
+#    capacity_index         생산능력 지수(CAPG*)  ②기각·⑥확증  ← 사양산업 판별의 핵심
+#    ppi_output/ppi_input   판가/원가             ⑦
+#    inventory_ratio        재고/출하             ⑧   기본 ISRATIO
+#    new_orders             신규수주              ⑧⑨확증  기본 AMTMNO
+#    unfilled_orders/shipments  수주잔고/출하     ⑨   기본 AMTMUO/AMTMVS
+#
+#  fedreg_terms / fedreg_agencies
+#    ⑤ 정책 축. 기관을 지정하지 않으면 광의어가 무관 규칙을 긁으므로 축이 기각된다.
+#    기관 슬러그는 federalregister.gov/api/v1/agencies.json 에서 확인.
+# =============================================================================
+
+benchmark: SPY
+
+themes:
+  - name: 전력기기·그리드
+    thesis: 데이터센터/전동화로 전력 수요는 뛰는데 변압기·개폐기 증설은 리드타임이 수년
+    lead_time: 12~24M
+    tickers: [ETN, PWR, POWL, HUBB, AZZ, NVT, ATKR, VRT]
+    customers:
+      tickers: [NEE, DUK, SO, AEP, D, EXC, EQIX, DLR]
+      series: IPUTIL
+    edgar_keywords: ["grid modernization", "transformer lead time", "interconnection queue"]
+    fedreg_terms: ["electric transmission", "interconnection"]
+    fedreg_agencies: [federal-energy-regulatory-commission, energy-department]
+    fred:
+      industrial_production: IPG335S
+      capacity_utilization: CAPUTLG335S
+      capacity_index: CAPG335S
+      ppi_output: PCU335311335311
+      ppi_input: WPU102501
+
+  - name: 반도체 첨단패키징·후공정
+    thesis: 미세화 한계로 가치가 전공정에서 후공정/패키징으로 이동
+    lead_time: 6~18M
+    tickers: [AMKR, ONTO, CAMT, KLIC, ACLS, COHU, FORM]
+    customers:
+      tickers: [NVDA, AMD, AVGO, QCOM, TXN, ADI, MU]
+      series: IPG3344S
+    edgar_keywords: ["advanced packaging", "hybrid bonding", "chiplet"]
+    fedreg_terms: ["semiconductor manufacturing"]
+    fedreg_agencies: [commerce-department]
+    fred:
+      industrial_production: IPG3344S
+      capacity_utilization: CAPUTLG3344S
+      capacity_index: CAPG3344S
+      ppi_output: PCU3344133441
+      ppi_input: WPU102501
+
+  - name: 항공 애프터마켓·MRO
+    thesis: 기재 노후화 + 신규 인도 지연으로 기존 기체를 더 오래 굴려야 함. 정비 수요는 산수
+    lead_time: 12~36M
+    tickers: [HEI, TDG, HWM, RBC, DCO, AIR, CW]
+    customers:
+      tickers: [DAL, UAL, AAL, LUV, ALK, FDX]
+      series: IPG3364T9S
+    edgar_keywords: ["aftermarket spare parts", "MRO capacity", "aircraft utilization"]
+    fedreg_terms: ["airworthiness directive"]
+    fedreg_agencies: [federal-aviation-administration]
+    fred:
+      industrial_production: IPG3364T9S
+      capacity_utilization: CAPUTLG3364T9S
+      capacity_index: CAPG3364T9S
+      ppi_output: PCU3364133641
+      ppi_input: WPU1017
+
+  - name: 데이터센터 열관리
+    thesis: 랙 전력밀도 상승으로 공랭이 한계에 도달 → 액침·직접칩냉각으로 기술 전환
+    lead_time: 6~18M
+    tickers: [VRT, MOD, SPXC, AAON, TT, CARR]
+    customers:
+      tickers: [MSFT, AMZN, GOOGL, META, EQIX, DLR]
+      series: IPG3341S
+    edgar_keywords: ["liquid cooling", "direct-to-chip cooling", "immersion cooling"]
+    fedreg_terms: ["data center energy efficiency"]
+    fedreg_agencies: [energy-department]
+    fred:
+      industrial_production: IPG333S
+      capacity_utilization: CAPUTLG333S
+      capacity_index: CAPG333S
+
+  - name: 정유·정제마진
+    thesis: 정제설비 순증설이 수년째 마이너스인데 수요는 유지 — 전형적 공급 비탄력
+    lead_time: 3~9M
+    tickers: [VLO, MPC, PSX, DINO, PBF, DK]
+    customers:
+      tickers: [DAL, UAL, UPS, FDX, ODFL, JBHT]
+      series: IPG324S
+    edgar_keywords: ["refinery utilization", "crack spread"]
+    fedreg_terms: ["renewable fuel standard", "refinery emissions"]
+    fedreg_agencies: [environmental-protection-agency]
+    fred:
+      industrial_production: IPG324S
+      capacity_utilization: CAPUTLG324S
+      capacity_index: CAPG324S
+      ppi_output: WPU057303
+      ppi_input: WPU0561
+
+  - name: 원자력 연료주기
+    thesis: 각국 원전 회귀 + 러시아산 농축우라늄 배제로 서방 농축·변환 능력이 병목
+    lead_time: 12~36M
+    tickers: [CCJ, LEU, UEC, DNN, NXE, BWXT]
+    customers:
+      tickers: [CEG, VST, NEE, DUK, SO, EXC]
+      series: IPUTIL
+    edgar_keywords: ["small modular reactor", "enriched uranium", "HALEU"]
+    fedreg_terms: ["nuclear reactor", "uranium enrichment"]
+    fedreg_agencies: [nuclear-regulatory-commission, energy-department]
+    fred:
+      industrial_production: IPUTIL
+
+  - name: 철강·특수강
+    thesis: 관세·리쇼어링 수요 대비 국내 증설 제한. 캐펙스 사이클 바닥 여부가 관건
+    lead_time: 6~18M
+    tickers: [NUE, STLD, CMC, X, CLF]
+    customers:
+      tickers: [CAT, DE, PCAR, GM, F, WHR]
+      series: IPG332S
+    edgar_keywords: ["reshoring", "domestic steel capacity"]
+    fedreg_terms: ["steel imports", "section 232"]
+    fedreg_agencies: [commerce-department, international-trade-administration]
+    fred:
+      industrial_production: IPG331S
+      capacity_utilization: CAPUTLG331S
+      capacity_index: CAPG331S
+      ppi_output: WPU1017
+      ppi_input: WPU101
+
+  - name: 방산·탄약
+    thesis: 재고 소진분 보충 + 각국 GDP 대비 국방비 상향. 예산은 이미 확정된 다년 계약
+    lead_time: 12~36M
+    tickers: [LMT, NOC, GD, LHX, HII, LDOS]
+    customers: {}          # 주요 고객이 정부라 상장 고객군이 없다 — ①④축은 자동 비활성
+    edgar_keywords: ["munitions production", "defense backlog"]
+    fedreg_terms: ["defense procurement", "munitions"]
+    fedreg_agencies: [defense-department]
+    fred:
+      industrial_production: IPG3364T9S
+      capacity_utilization: CAPUTLG3364T9S
+      capacity_index: CAPG3364T9S

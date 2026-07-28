@@ -1,0 +1,3 @@
+requests>=2.31
+PyYAML>=6.0
+truststore>=0.9        # 사내 SSL 검사 프록시 우회 — 없으면 모든 호출이 실패한다

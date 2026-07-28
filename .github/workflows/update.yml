@@ -1,0 +1,76 @@
+name: 스크리너 갱신
+
+# 시황에 맞춰 자동 갱신한다.
+#  - 평일 미국장 마감 후(21:30 UTC ≈ 서머타임 기준 마감 1시간 반 뒤) 하루 한 번
+#  - 필요하면 Actions 탭에서 수동 실행(workflow_dispatch)
+on:
+  schedule:
+    - cron: "30 21 * * 1-5"
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths: ["themes.yaml", "screener/**", "run.py"]
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# 갱신이 겹치면 최신 것만 남긴다
+concurrency:
+  group: screener
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - run: pip install -r requirements.txt
+
+      # 이전 실행의 캐시를 재사용해 SEC 호출을 줄인다(SEC 는 10 req/s 제한)
+      - name: 데이터 캐시 복원
+        uses: actions/cache@v4
+        with:
+          path: cache
+          key: screener-data-${{ github.run_id }}
+          restore-keys: screener-data-
+
+      - name: 스크리너 실행
+        env:
+          BEA_API_KEY: ${{ secrets.BEA_API_KEY }}
+          # SEC 는 연락처가 담긴 User-Agent 를 요구한다. 없으면 403.
+          SCREENER_UA: ${{ secrets.SCREENER_UA || 'DaolResearch RA screener' }}
+        run: python run.py --no-open
+
+      - name: 결과 확인
+        run: |
+          test -s out/screener.html || { echo "대시보드가 생성되지 않았습니다"; exit 1; }
+          echo "생성됨: $(wc -c < out/screener.html) bytes"
+
+      # 저장소가 private 이고 Pages 를 안 쓰는 경우에도 결과를 받을 수 있게
+      - uses: actions/upload-artifact@v4
+        with:
+          name: screener-html
+          path: out/screener.html
+          retention-days: 30
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: out
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deploy.outputs.page_url }}
+    steps:
+      - id: deploy
+        uses: actions/deploy-pages@v4

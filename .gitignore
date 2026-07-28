@@ -1,0 +1,16 @@
+# --- 절대 올리면 안 되는 것 ---
+bea_key.txt
+*_key.txt
+.env
+corp-ca*.pem          # 사내 프록시 CA 번들 — 내부 인프라 정보
+
+# --- 재생성되는 것 ---
+cache/
+out/
+__pycache__/
+*.pyc
+
+# --- 작업 중 임시 스크립트 ---
+_dbg*.py
+_verify*.py
+_inspect.py

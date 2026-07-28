@@ -1,0 +1,100 @@
+"""공통 HTTP 계층.
+
+사내망 특성 두 가지를 여기서 흡수한다.
+  1) SSL 검사 프록시가 인증서를 갈아끼운다 -> certifi 번들은 실패, Windows 저장소는 성공.
+     truststore 로 OS 네이티브 검증을 파이썬에 주입한다.
+  2) 외부 호출이 느리고 불안정하다 -> 모든 응답을 디스크에 캐시한다.
+"""
+from __future__ import annotations
+
+import hashlib
+import json
+import os
+import time
+from pathlib import Path
+
+try:
+    import truststore
+
+    truststore.inject_into_ssl()
+    TRUSTSTORE_OK = True
+except Exception:  # pragma: no cover - 설치 안 된 환경
+    TRUSTSTORE_OK = False
+
+import requests
+
+ROOT = Path(__file__).resolve().parent.parent
+CACHE_DIR = ROOT / "cache"
+CACHE_DIR.mkdir(exist_ok=True)
+
+# SEC 는 연락처가 담긴 User-Agent 를 요구한다. 없으면 403.
+UA = os.environ.get("SCREENER_UA", "DaolResearch RA animsam09@gmail.com")
+HEADERS = {"User-Agent": UA, "Accept-Encoding": "gzip, deflate"}
+
+_last_call: dict[str, float] = {}
+# 호스트별 최소 호출 간격(초). SEC 는 10 req/s 제한이 있다.
+_MIN_INTERVAL = {"data.sec.gov": 0.12, "www.sec.gov": 0.12, "efts.sec.gov": 0.15}
+
+
+class FetchError(RuntimeError):
+    pass
+
+
+def _throttle(host: str) -> None:
+    gap = _MIN_INTERVAL.get(host, 0.0)
+    if not gap:
+        return
+    prev = _last_call.get(host, 0.0)
+    wait = gap - (time.time() - prev)
+    if wait > 0:
+        time.sleep(wait)
+    _last_call[host] = time.time()
+
+
+def _cache_path(url: str, body: object | None) -> Path:
+    key = hashlib.sha256((url + json.dumps(body, sort_keys=True) if body else url).encode()).hexdigest()[:24]
+    return CACHE_DIR / f"{key}.bin"
+
+
+def fetch(url: str, *, ttl_hours: float = 24.0, json_body: object | None = None,
+          timeout: int = 40, retries: int = 3) -> bytes:
+    """URL 을 가져온다. ttl_hours 안이면 디스크 캐시를 쓴다."""
+    cp = _cache_path(url, json_body)
+    if cp.exists() and (time.time() - cp.stat().st_mtime) < ttl_hours * 3600:
+        return cp.read_bytes()
+
+    host = url.split("/")[2]
+    last = None
+    for attempt in range(retries):
+        try:
+            _throttle(host)
+            if json_body is not None:
+                r = requests.post(url, json=json_body,
+                                  headers={**HEADERS, "Content-Type": "application/json"},
+                                  timeout=timeout)
+            else:
+                r = requests.get(url, headers=HEADERS, timeout=timeout)
+            if r.status_code == 404:
+                raise FetchError(f"404 {url}")
+            r.raise_for_status()
+            cp.write_bytes(r.content)
+            return r.content
+        except FetchError:
+            raise
+        except Exception as e:  # 네트워크 흔들림은 재시도
+            last = e
+            time.sleep(1.5 * (attempt + 1))
+
+    # 신선하진 않아도 캐시가 있으면 그걸 쓴다 (오프라인 저하 동작)
+    if cp.exists():
+        return cp.read_bytes()
+    raise FetchError(f"{url} 실패: {type(last).__name__}: {last}")
+
+
+def fetch_json(url: str, **kw) -> dict:
+    raw = fetch(url, **kw)
+    return json.loads(raw.decode("utf-8", "replace"))
+
+
+def fetch_text(url: str, **kw) -> str:
+    return fetch(url, **kw).decode("utf-8", "replace")
