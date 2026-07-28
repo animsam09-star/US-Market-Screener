@@ -15,7 +15,7 @@ from __future__ import annotations
 
 import argparse
 import sys
-from datetime import date
+from datetime import date, datetime
 from pathlib import Path
 
 sys.stdout.reconfigure(encoding="utf-8", errors="replace")
@@ -51,8 +51,11 @@ def main() -> int:
                     help="산업연관표 연도 (기본: 재작년 — BEA 공표가 2년 지연)")
     args = ap.parse_args()
 
+    # 시각까지 넣는다. 날짜만 넣으면 결과가 같을 때 파일이 바이트 단위로 동일해져
+    # 커밋이 생략되고, 그러면 '실행이 안 됐다'와 '결과가 같다'를 구별할 수 없다.
     lines: list[str] = ["# 고객군 자동 지정 리포트", ""]
-    lines.append(f"생성: {date.today().isoformat()} · 대상 연도: {args.year}")
+    lines.append(f"생성: {datetime.now().astimezone().strftime('%Y-%m-%d %H:%M:%S %Z')}"
+                 f" · 대상 연도: {args.year}")
     lines.append("")
 
     if not bea_key():
