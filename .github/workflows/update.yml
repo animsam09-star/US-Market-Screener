@@ -9,7 +9,17 @@ on:
   workflow_dispatch:
   push:
     branches: [main]
-    paths: ["themes.yaml", "screener/**", "run.py"]
+    # 로직·설정·테스트·워크플로 자체가 바뀌면 돈다.
+    # reports/ 는 이 워크플로가 스스로 커밋하는 곳이라 넣으면 무한 루프가 된다.
+    paths:
+      - "themes.yaml"
+      - "screener/**"
+      - "run.py"
+      - "discover_customers.py"
+      - "export_financials.py"
+      - "tests/**"
+      - "data/**"
+      - ".github/workflows/**"
 
 permissions:
   contents: write        # 고객군 리포트를 저장소로 되돌려 커밋하기 위함
