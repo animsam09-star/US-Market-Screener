@@ -465,13 +465,19 @@ def a8_inventory(cfg: dict, fred) -> Signal:
         return _nodata(*K, "재고/출하 이력 부족")
 
     cur = ratio[-1][1]
-    rank = pct_rank(cur, [v for d, v in ratio if d.year >= date.today().year - 10])
+    yr = date.today().year
+    rank = pct_rank(cur, [v for d, v in ratio if d.year >= yr - 10])
     if rank is None:
         return _nodata(*K, "재고율 이력 부족")
+    # 10년 창은 2020~22 재고 급증을 품고 있어 현재를 과도하게 낮게 보이게 한다.
+    # 전기장비는 10년 기준 0분위지만 전체 이력으로는 중앙값(47분위)이다.
+    # 그래서 긴 창을 함께 보고, 동의할 때만 확증으로 인정한다.
+    rank_all = pct_rank(cur, [v for _, v in ratio])
     sc = 100.0 - rank
-    detail = f"재고/출하 {cur:.2f}개월분 (10년 {rank:.0f}분위)"
+    detail = (f"재고/출하 {cur:.2f}개월분 (10년 {rank:.0f}분위"
+              + (f", 전체 이력 {rank_all:.0f}분위)" if rank_all is not None else ")"))
 
-    # 확증: 수요가 살아 있어야 '재입고 여지'다. 내구재는 신규수주, 비내구재는
+    # 확증 ①: 수요가 살아 있어야 '재입고 여지'다. 내구재는 신규수주, 비내구재는
     # 신규수주 자체가 조사되지 않으므로 출하로 대신한다.
     dg, dlab = _demand_yoy(cfg, fred)
     if dg is None:
@@ -481,6 +487,14 @@ def a8_inventory(cfg: dict, fred) -> Signal:
     if dg <= 0:
         return _reject(*K, f"수요 붕괴 — 재고는 낮지만 {dlab}가 {dg:+.1f}%. "
                            "재입고 여지가 아니라 주문 자체가 줄어 재고가 마른 것", detail)
+
+    # 확증 ②: 긴 창도 낮다고 말해야 진짜 재고 고갈이다
+    if rank_all is not None and rank_all >= 50:
+        return Signal(*K, sc * 0.5, "unconfirmed", detail,
+                      f"코로나 왜곡 의심 — 10년 창으로는 {rank:.0f}분위지만 전체 이력으로는 "
+                      f"{rank_all:.0f}분위(중앙값 수준). 2020~22 재고 급증이 기준 분포를 "
+                      "부풀려 현재가 낮아 보이는 것일 수 있다",
+                      FRED_URL.format(inv_id), cur)
     return Signal(*K, sc, "ok", detail, "", FRED_URL.format(inv_id), cur)
 
 
