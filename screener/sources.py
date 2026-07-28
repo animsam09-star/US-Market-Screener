@@ -246,7 +246,7 @@ def sec_sic(cik: int) -> tuple[str, str]:
 
 # ---------------------------------------------------------------- 주가
 
-def yahoo_prices(ticker: str, rng: str = "5y") -> list[tuple[date, float]]:
+def _yahoo(ticker: str, rng: str) -> list[tuple[date, float]]:
     url = (f"https://query1.finance.yahoo.com/v8/finance/chart/{urllib.parse.quote(ticker)}"
            f"?range={rng}&interval=1d")
     d = fetch_json(url, ttl_hours=12)
@@ -256,14 +256,45 @@ def yahoo_prices(ticker: str, rng: str = "5y") -> list[tuple[date, float]]:
     r = res[0]
     ts = r.get("timestamp") or []
     adj = ((r.get("indicators", {}).get("adjclose") or [{}])[0]).get("adjclose") or []
-    out = []
-    for t, c in zip(ts, adj):
-        if c is None:
-            continue
-        out.append((datetime.utcfromtimestamp(t).date(), float(c)))
+    out = [(datetime.utcfromtimestamp(t).date(), float(c))
+           for t, c in zip(ts, adj) if c is not None]
     if not out:
         raise FetchError(f"{ticker}: 종가 전부 결측")
     return out
+
+
+def _stooq(ticker: str) -> list[tuple[date, float]]:
+    """Yahoo 폴백. Stooq 는 키가 필요 없고 클라우드 IP 를 덜 가린다."""
+    url = f"https://stooq.com/q/d/l/?s={urllib.parse.quote(ticker.lower())}.us&i=d"
+    txt = fetch(url, ttl_hours=12).decode("utf-8", "replace")
+    lines = [l for l in txt.strip().split("\n") if l]
+    if len(lines) < 2 or not lines[0].lower().startswith("date"):
+        raise FetchError(f"{ticker}: Stooq 응답이 CSV 가 아님")
+    out = []
+    for line in lines[1:]:
+        p = line.split(",")
+        if len(p) < 5:
+            continue
+        try:
+            out.append((datetime.strptime(p[0], "%Y-%m-%d").date(), float(p[4])))
+        except ValueError:
+            continue
+    if not out:
+        raise FetchError(f"{ticker}: Stooq 종가 없음")
+    return out
+
+
+def yahoo_prices(ticker: str, rng: str = "5y") -> list[tuple[date, float]]:
+    """주가. Yahoo 우선, 실패하면 Stooq.
+
+    Yahoo 는 클라우드 IP(GitHub Actions 러너 등)를 차단하는 일이 잦다.
+    그러면 미반영 축 4개 중 2개(주가 미반응·고점 대비 눌림)가 통째로 죽는데,
+    로컬에서는 멀쩡해서 눈치채기 어렵다. 그래서 폴백을 둔다.
+    """
+    try:
+        return _yahoo(ticker, rng)
+    except FetchError:
+        return _stooq(ticker)
 
 
 # ---------------------------------------------------------------- 정책

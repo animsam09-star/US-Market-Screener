@@ -357,6 +357,13 @@ border:1px solid currentColor;vertical-align:1px;letter-spacing:.02em}
 .st-warn{color:var(--text-secondary)}
 .st-rej{color:var(--critical)}
 .st-na{color:var(--muted)}
+.healthwarn{margin:16px 0 0;padding:14px 18px;border-radius:12px;
+background:var(--surface-1);border:1px solid var(--critical);
+border-left:4px solid var(--critical)}
+.healthwarn h3{margin:0 0 8px;font-size:13px;color:var(--critical);letter-spacing:.01em}
+.healthwarn ul{margin:0 0 8px 18px;padding:0;font-size:12.5px;color:var(--text-secondary)}
+.healthwarn li{margin-bottom:4px}
+.healthwarn p{margin:0;font-size:12px;color:var(--muted)}
 .drivers{margin:0 0 6px;font-size:12px;color:var(--text-secondary)}
 .drivers strong{color:var(--text-primary);font-weight:600}
 .claim{margin:0 0 6px;font-size:12px;display:flex;align-items:center;gap:10px;flex-wrap:wrap}
@@ -408,6 +415,27 @@ def build_html(results: list[ThemeResult], *, benchmark: str = "SPY") -> str:
 
     cards = "".join(_card(r, i) for i, r in enumerate(ranked, 1))
 
+    # 판독 건강도 — 데이터가 통째로 안 들어온 것을 조용히 넘기지 않는다.
+    # 주가가 죽으면 미반영 축 4개 중 2개가 사라지는데, 점수만 보면 눈치채기 어렵다.
+    dead_px = sum(1 for r in ranked
+                  if any(s.key in ("U3", "U4") and s.score is None for s in r.unpriced))
+    dead_fin = sum(1 for r in ranked if not r.series.get("n_companies"))
+    warn = ""
+    if dead_px or dead_fin:
+        items = []
+        if dead_px:
+            items.append(f"<li><strong>주가 미확보 {dead_px}/{len(ranked)}개 테마</strong> — "
+                         "‘주가 미반응’·‘고점 대비 눌림’ 두 축이 빠졌습니다. "
+                         "Yahoo 가 클라우드 IP 를 차단했을 수 있습니다(Stooq 폴백도 실패).</li>")
+        if dead_fin:
+            items.append(f"<li><strong>SEC 재무 미확보 {dead_fin}개 테마</strong> — "
+                         "실적·밸류에이션 축이 빠졌습니다. User-Agent 미설정 시 SEC 가 "
+                         "403 을 냅니다.</li>")
+        warn = ('<div class="healthwarn"><h3>데이터 결손 경고</h3><ul>'
+                + "".join(items) +
+                "</ul><p>아래 순위는 빠진 축을 제외하고 계산됐습니다. "
+                "축이 적을수록 점수의 신뢰도가 낮습니다.</p></div>")
+
     return f"""<!doctype html>
 <html lang="ko"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
@@ -423,6 +451,7 @@ r.dataset.theme=r.dataset.theme==='dark'?'light':'dark'">라이트/다크</butto
 <p class="meta">{now} 기준 · 테마 {len(ranked)}개 · 목표 사분면 {n_target}개 ·
 벤치마크 {_e(benchmark)} · 전 지표 무료 공공데이터(FRED·SEC·Federal Register·Yahoo)</p>
 
+{warn}
 <h2>사분면 — 촉매 대비 미반영</h2>
 <div class="panel">{_scatter(ranked)}</div>
 
