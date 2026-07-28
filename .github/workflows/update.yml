@@ -23,6 +23,9 @@ concurrency:
 jobs:
   build:
     runs-on: ubuntu-latest
+    # 로컬 전체 실행이 5초다. 차단된 호스트에 타임아웃을 먹으면 몇 시간까지
+    # 늘어지므로(실제로 그랬다) 상한을 둔다. 넘으면 죽는 게 낫다.
+    timeout-minutes: 12
     # secrets 컨텍스트는 step 의 if 에서 쓸 수 없다(Unrecognized named-value).
     # 잡 레벨 env 로 한 번 받아야 step if 에서 참조할 수 있다.
     env:
@@ -100,6 +103,7 @@ jobs:
           retention-days: 30
 
       - name: 스크리너 실행
+        timeout-minutes: 8
         env:
           BEA_API_KEY: ${{ secrets.BEA_API_KEY }}
           # SEC 는 연락처가 담긴 User-Agent 를 요구한다. 없으면 403.
