@@ -12,7 +12,7 @@ on:
     paths: ["themes.yaml", "screener/**", "run.py"]
 
 permissions:
-  contents: read
+  contents: write        # 고객군 리포트를 저장소로 되돌려 커밋하기 위함
 
 concurrency:
   group: screener
@@ -38,6 +38,27 @@ jobs:
           path: cache
           key: screener-data-${{ github.run_id }}
           restore-keys: screener-data-
+
+      # BEA 키는 시크릿에만 있어 로컬에서 검증할 수 없다. 그래서 결과를 리포트로
+      # 남기고 저장소에 되돌려 커밋한다 — 그게 다음 수정의 유일한 근거가 된다.
+      - name: 고객군 자동 지정 (BEA 산업연관표)
+        continue-on-error: true
+        env:
+          BEA_API_KEY: ${{ secrets.BEA_API_KEY }}
+          SCREENER_UA: ${{ secrets.SCREENER_UA }}
+        run: python discover_customers.py
+
+      - name: 고객군 리포트 커밋
+        continue-on-error: true
+        run: |
+          test -f out/customers_report.md || exit 0
+          mkdir -p reports && cp out/customers_report.md reports/customers_report.md
+          git config user.name  "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add reports/customers_report.md
+          git diff --staged --quiet && { echo "변경 없음"; exit 0; }
+          git commit -m "고객군 자동 지정 리포트 갱신 (BEA 산업연관표)"
+          git push
 
       - name: 스크리너 실행
         env:
