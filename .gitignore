@@ -14,3 +14,6 @@ __pycache__/
 _dbg*.py
 _verify*.py
 _inspect.py
+_m3.py
+_dbg*
+probe_sources.py

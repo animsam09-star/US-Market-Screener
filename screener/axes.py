@@ -289,35 +289,45 @@ def a4_replacement(cust_fin: dict) -> Signal:
 
 # ---------------------------------------------------------------- ⑤ 정책
 
-def a5_policy(theme: dict, upcoming: list[dict]) -> Signal:
-    """이미 시행된 규제는 이미 반영됐다. 앞으로 시행될 것만 신호다."""
+def a5_policy(theme: dict, fr: dict) -> Signal:
+    """이미 시행된 규제는 이미 반영됐다. 앞으로 올 것만 신호다.
+
+    선행 신호는 최종규칙이 아니라 입안예고에 있다(최종규칙은 공표 30~60일이면
+    발효돼 선행 구간이 없다). 그리고 경제영향 1억달러 이상(significant)만 센다 —
+    그러지 않으면 정기 감항성 지침 같은 일상 행정문서가 신호를 덮는다.
+    """
     K = ("A5", "⑤ 정책 강제수요")
     if not (theme.get("fedreg_terms") or []):
         return _nodata(*K, "fedreg_terms 미지정")
-    if not theme.get("fedreg_agencies"):
-        return _reject(*K, "소관기관 미지정 — 광의어 검색은 무관 규칙을 긁는다. "
-                           "themes.yaml 에 fedreg_agencies 를 지정해야 이 축이 활성화된다")
-    if not upcoming:
-        return Signal(*K, 0.0, "ok", "향후 24개월 내 시행 예정 최종규칙 없음")
+    if not fr:
+        return _nodata(*K, "Federal Register 조회 실패")
 
-    sig = [r for r in upcoming if r["significant"]]
-    weighted = len(upcoming) + 2 * len(sig)
-    nearest = min(r["months_out"] for r in upcoming)
+    n_rule, n_pro = fr.get("n_rule", 0), fr.get("n_proposed", 0)
+    total = n_rule + n_pro
+    if total == 0:
+        return Signal(*K, 0.0, "ok",
+                      "최근 12개월 중요 입안예고 0건, 시행 예정 중요 최종규칙 0건 — "
+                      "이 테마를 밀어줄 규제 움직임이 관측되지 않음")
 
-    if nearest <= 6:
-        timing = 0.4
-    elif nearest <= 18:
-        timing = 1.0
-    else:
-        timing = 0.6
+    # 입안예고가 선행 신호의 본체다. 최종규칙은 이미 늦은 쪽이라 절반만 친다.
+    weighted = n_pro + 0.5 * n_rule
+    sc = scale(weighted, 0, 8) or 0
 
-    sc = (scale(weighted, 0, 30) or 0) * timing
-    top = max(upcoming, key=lambda r: (r["significant"], -r["months_out"]))
-    detail = (f"시행 예정 {len(upcoming)}건(중요규칙 {len(sig)}건), 최근접 시행까지 "
-              f"{nearest:.0f}개월 — {top['title'][:80]}")
-    return Signal(*K, sc, "ok" if sig else "unconfirmed", detail,
-                  "" if sig else "확증 실패: 경제영향 1억달러 이상(significant) 규칙 없음",
-                  top["url"], float(weighted))
+    items = fr.get("items") or []
+    match = fr.get("n_agency_match", 0)
+    if match:
+        sc = min(100.0, sc * 1.25)      # 소관기관 일치는 게이트가 아니라 가중치
+    top = items[0] if items else None
+    detail = (f"중요 입안예고 {n_pro}건(최근 12M), 시행 예정 중요 최종규칙 {n_rule}건, "
+              f"소관기관 일치 {match}건"
+              + (f" — {top['title'][:80]}" if top else ""))
+
+    if not match:
+        return Signal(*K, sc * 0.6, "unconfirmed", detail,
+                      "확증 실패: 지정한 소관기관과 일치하는 규칙이 없음 — "
+                      "검색어가 다른 분야의 규칙을 잡았을 수 있다",
+                      top["url"] if top else "", float(total))
+    return Signal(*K, sc, "ok", detail, "", top["url"] if top else "", float(total))
 
 
 # ---------------------------------------------------------------- ⑥ 캐펙스
@@ -410,35 +420,54 @@ def a8_inventory(cfg: dict, fred) -> Signal:
     K = ("A8", "⑧ 재고 바닥")
     # 전 제조업 총계로 폴백하면 모든 테마가 같은 점수를 받아 스크리너가 무의미해진다.
     # 산업별 시리즈가 없으면 축을 비활성한다 — 틀린 기본값보다 '없음'이 낫다.
-    sid, no_id = cfg.get("inventory_ratio"), cfg.get("new_orders")
-    if not sid:
-        return _nodata(*K, "산업별 재고율 시리즈 미지정 — 전 제조업 총계 폴백은 "
+    inv_id, sh_id = cfg.get("inventories"), cfg.get("shipments")
+    if not (inv_id and sh_id):
+        return _nodata(*K, "산업별 재고·출하 시리즈 미지정 — 전 제조업 총계 폴백은 "
                            "모든 테마에 같은 점수를 주므로 사용하지 않는다")
-    if not no_id:
-        return _nodata(*K, "산업별 신규수주 시리즈 미지정 — 재고 바닥과 수요 붕괴를 "
-                           "가릴 수 없어 축을 비활성한다")
     try:
-        s = fred(sid)
+        ratio = _ratio(fred(inv_id), fred(sh_id))
     except Exception as e:
-        return _nodata(*K, f"재고율 조회 실패: {e}")
-    cur = last(s)
-    rank = pct_rank(cur, [v for d, v in s if d.year >= date.today().year - 10])
+        return _nodata(*K, f"재고/출하 조회 실패: {e}")
+    if len(ratio) < 36:
+        return _nodata(*K, "재고/출하 이력 부족")
+
+    cur = ratio[-1][1]
+    rank = pct_rank(cur, [v for d, v in ratio if d.year >= date.today().year - 10])
     if rank is None:
         return _nodata(*K, "재고율 이력 부족")
     sc = 100.0 - rank
-    detail = f"재고/출하 {cur:.2f} (10년 {rank:.0f}분위)"
+    detail = f"재고/출하 {cur:.2f}개월분 (10년 {rank:.0f}분위)"
 
-    try:
-        ns = fred(no_id)
-        ng = yoy(ns, freq_periods(ns))[-1][1]
-    except Exception:
-        return Signal(*K, sc, "unconfirmed", detail, "확증 실패: 신규수주 조회 실패")
+    # 확증: 수요가 살아 있어야 '재입고 여지'다. 내구재는 신규수주, 비내구재는
+    # 신규수주 자체가 조사되지 않으므로 출하로 대신한다.
+    dg, dlab = _demand_yoy(cfg, fred)
+    if dg is None:
+        return Signal(*K, sc, "unconfirmed", detail, "확증 실패: 수요 지표 조회 실패")
 
-    detail += f", 신규수주 YoY {ng:+.1f}%"
-    if ng <= 0:
-        return _reject(*K, f"수요 붕괴 — 재고는 낮지만 신규수주가 {ng:+.1f}%. "
+    detail += f", {dlab} YoY {dg:+.1f}%"
+    if dg <= 0:
+        return _reject(*K, f"수요 붕괴 — 재고는 낮지만 {dlab}가 {dg:+.1f}%. "
                            "재입고 여지가 아니라 주문 자체가 줄어 재고가 마른 것", detail)
-    return Signal(*K, sc, "ok", detail, "", FRED_URL.format(sid), cur)
+    return Signal(*K, sc, "ok", detail, "", FRED_URL.format(inv_id), cur)
+
+
+def _ratio(num: list, den: list) -> list:
+    dn = dict(den)
+    return [(d, v / dn[d]) for d, v in num if dn.get(d)]
+
+
+def _demand_yoy(cfg: dict, fred) -> tuple[float | None, str]:
+    """수요 확증 지표. 내구재는 신규수주, 비내구재(석유·화학 등)는 출하."""
+    for key, label in (("new_orders", "신규수주"), ("shipments", "출하")):
+        sid = cfg.get(key)
+        if not sid:
+            continue
+        try:
+            s = fred(sid)
+            return yoy(s, freq_periods(s))[-1][1], label
+        except Exception:
+            continue
+    return None, ""
 
 
 # ---------------------------------------------------------------- ⑨ 병목
@@ -449,19 +478,19 @@ def a9_bottleneck(cfg: dict, fred) -> Signal:
     bl, sh, no_id = (cfg.get("unfilled_orders"), cfg.get("shipments"),
                      cfg.get("new_orders"))
     if not (bl and sh):
-        return _nodata(*K, "산업별 수주잔고/출하 시리즈 미지정 — 전 제조업 총계 폴백은 "
-                           "모든 테마에 같은 점수를 주므로 사용하지 않는다")
+        # 비내구재(석유·화학 등)는 수주잔고 자체를 조사하지 않는다 — 축이 성립 안 함
+        return _nodata(*K, "산업별 수주잔고/출하 시리즈 미지정. 비내구재 산업은 "
+                           "수주잔고가 조사되지 않아 이 축이 성립하지 않는다")
     if not no_id:
         return _nodata(*K, "산업별 신규수주 시리즈 미지정 — 수요초과형과 생산차질형을 "
                            "가릴 수 없어 축을 비활성한다")
     try:
-        db, ds = dict(fred(bl)), dict(fred(sh))
+        ratio = _ratio(fred(bl), fred(sh))
     except Exception as e:
         return _nodata(*K, f"수주잔고/출하 조회 실패: {e}")
-    common = sorted(set(db) & set(ds))
-    if len(common) < 36:
+    if len(ratio) < 36:
         return _nodata(*K, "공통 이력 부족")
-    ratio = [(d, db[d] / ds[d]) for d in common if ds[d]]
+
     cur = ratio[-1][1]
     rank = pct_rank(cur, [v for d, v in ratio if d.year >= date.today().year - 10])
     if rank is None:

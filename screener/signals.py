@@ -15,7 +15,7 @@ from .axes import Signal
 from .net import FetchError
 from .sources import (
     edgar_fts,
-    fedreg_upcoming,
+    fedreg_signal,
     fred_series,
     sec_company_facts,
     xbrl_quarterly,
@@ -290,8 +290,8 @@ def evaluate_theme(theme: dict, tmap: dict, bench: list, series_cache: dict) -> 
         cust_fin, cnotes = aggregate_financials(ct, tmap, cprices)
         res.notes.extend(f"[고객군] {n}" for n in cnotes)
 
-    upcoming = fedreg_upcoming(theme.get("fedreg_terms") or [],
-                               theme.get("fedreg_agencies"))
+    fr = fedreg_signal(theme.get("fedreg_terms") or [],
+                       theme.get("fedreg_agencies"))
     fc = theme.get("fred", {})
 
     res.catalyst = [
@@ -299,7 +299,7 @@ def evaluate_theme(theme: dict, tmap: dict, bench: list, series_cache: dict) -> 
         axes.a2_supply(fc, fred),
         axes.a3_newtech(theme, group, fts),
         axes.a4_replacement(cust_fin),
-        axes.a5_policy(theme, upcoming),
+        axes.a5_policy(theme, fr),
         axes.a6_capex(group, fc, fred),
         axes.a7_spread(fc, group, fred),
         axes.a8_inventory(fc, fred),

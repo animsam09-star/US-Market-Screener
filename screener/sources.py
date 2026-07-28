@@ -268,46 +268,63 @@ def yahoo_prices(ticker: str, rng: str = "5y") -> list[tuple[date, float]]:
 
 # ---------------------------------------------------------------- 정책
 
-def fedreg_upcoming(terms: list[str], agencies: list[str] | None = None,
-                    *, horizon_months: int = 24) -> list[dict]:
-    """앞으로 시행될 최종규칙만 가져온다.
+_FR = "https://www.federalregister.gov/api/v1/documents.json"
 
-    이미 시행된 규제는 이미 가격에 있다. 신호는 'effective_on 이 미래'인 것뿐이다.
-    significant=True 는 경제적 영향 1억달러 이상을 뜻하며 별도로 가중한다.
+
+def fedreg_signal(terms: list[str], agencies: list[str] | None = None) -> dict:
+    """정책 강제수요 신호.
+
+    설계 초안은 '시행일이 미래인 최종규칙'만 셌으나 실측에서 무너졌다. 미국
+    최종규칙은 공표 후 보통 30~60일이면 발효되므로, 어느 시점에나 '시행 예정'
+    상태인 규칙이 거의 없다(한 테마 227건 중 1건). 12~24개월 선행 신호는
+    최종규칙이 아니라 **입안예고(PRORULE)** 단계에 있다.
+
+    또 하나: 전문검색은 일상 행정문서를 대량으로 긁는다(항공 '감항성 지침'
+    243건). 그래서 **significant**(경제영향 1억달러 이상)로만 센다. 이 플래그가
+    정책 명령과 정기 공지를 가르는 유일한 구조적 구분자다.
+
+    agencies 는 게이트가 아니라 가중치다 — 소관기관이 일치하면 신뢰도가 높지만,
+    기관 필터를 검색어와 AND 로 걸면 결과가 0이 된다(실측 확인).
     """
     if not terms:
-        return []
+        return {}
     today = date.today()
-    horizon = today + timedelta(days=int(horizon_months * 30.44))
+    year_ago = (today - timedelta(days=365)).isoformat()
     q = urllib.parse.quote(" OR ".join(f'"{t}"' for t in terms))
-    url = ("https://www.federalregister.gov/api/v1/documents.json"
-           f"?per_page=100&order=newest&conditions[term]={q}"
-           "&conditions[type][]=RULE"
-           f"&conditions[effective_date][gte]={today.isoformat()}"
-           f"&conditions[effective_date][lte]={horizon.isoformat()}"
-           "&fields[]=title&fields[]=effective_on&fields[]=significant"
-           "&fields[]=publication_date&fields[]=agencies&fields[]=html_url")
-    if agencies:
-        for a in agencies:
-            url += f"&conditions[agencies][]={urllib.parse.quote(a)}"
-    try:
-        d = fetch_json(url, ttl_hours=24 * 3)
-    except FetchError:
-        return []
-    out = []
-    for it in d.get("results", []) or []:
-        eff = it.get("effective_on")
-        if not eff:
-            continue
+    fields = ("&fields[]=title&fields[]=effective_on&fields[]=significant"
+              "&fields[]=publication_date&fields[]=agencies&fields[]=html_url&fields[]=type")
+
+    def pull(extra: str) -> tuple[int, list[dict]]:
         try:
-            ed = datetime.strptime(eff, "%Y-%m-%d").date()
-        except ValueError:
-            continue
-        out.append({
+            d = fetch_json(f"{_FR}?per_page=20&order=newest&conditions[term]={q}"
+                           f"&conditions[significant]=1{extra}{fields}", ttl_hours=24 * 3)
+        except FetchError:
+            return 0, []
+        return int(d.get("count", 0) or 0), (d.get("results") or [])
+
+    n_rule, r_rule = pull("&conditions[type][]=RULE"
+                          f"&conditions[effective_date][gte]={today.isoformat()}")
+    n_pro, r_pro = pull("&conditions[type][]=PRORULE"
+                        f"&conditions[publication_date][gte]={year_ago}")
+
+    ag = {a.lower() for a in (agencies or [])}
+    items = []
+    for it in r_rule + r_pro:
+        names = {str(a.get("slug", "")).lower() for a in (it.get("agencies") or [])}
+        eff = it.get("effective_on")
+        months_out = None
+        if eff:
+            try:
+                months_out = (datetime.strptime(eff, "%Y-%m-%d").date() - today).days / 30.44
+            except ValueError:
+                pass
+        items.append({
             "title": (it.get("title") or "")[:160],
+            "type": it.get("type", ""),
             "effective_on": eff,
-            "months_out": (ed - today).days / 30.44,
-            "significant": bool(it.get("significant")),
+            "months_out": months_out,
+            "agency_match": bool(ag & names),
             "url": it.get("html_url", ""),
         })
-    return out
+    return {"n_rule": n_rule, "n_proposed": n_pro, "items": items,
+            "n_agency_match": sum(1 for i in items if i["agency_match"])}
