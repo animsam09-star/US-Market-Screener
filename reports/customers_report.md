@@ -1,6 +1,6 @@
 # 고객군 자동 지정 리포트
 
-생성: 2026-07-28 08:16:21 UTC · 대상 연도: 2024
+생성: 2026-07-28 08:26:59 UTC · 대상 연도: 2024
 
 ## 1. 사용 가능한 산업연관표
 
@@ -120,12 +120,14 @@
 |---|---|---|---|
 | Construction | `23` | 41.4% | —  건설 — 실질 산출 지수 없음(건설지출은 명목) |
 | Machinery | `333` | 10.2% | IPG333S |
-| Electrical equipment, appliances, and components | `335` | 7.8% | IPG335S |
+| Electrical equipment, appliances, and components | `335` | 7.8% | —  자기 산업 — 순환이라 낙수 축에 못 씀 |
 | Motor vehicles, bodies and trailers, and parts | `3361MV` | 7.6% | IPG3361T3S |
 | Miscellaneous professional, scientific, and technica | `5412OP` | 3.9% | —  전문서비스 — 산업생산 지수 없음 |
 | Wholesale trade | `42` | 3.7% | —  도매 — 산업생산 지수 없음 |
 | Farms | `111CA` | 2.6% | — |
 | Fabricated metal products | `332` | 2.3% | IPG332S |
+
+자기 산업 내 거래 7.8% — 후보에서 제외했다.
 
 제안 `customers.series`: **IPG333S** (비중 10.2%, IPUTIL → IPG333S)
 
@@ -136,7 +138,7 @@
 | 고객 산업 | 코드 | 비중 | FRED 지표 |
 |---|---|---|---|
 | Wholesale trade | `42` | 17.3% | —  도매 — 산업생산 지수 없음 |
-| Computer and electronic products | `334` | 12.3% | IPG334S |
+| Computer and electronic products | `334` | 12.3% | —  자기 산업 — 순환이라 낙수 축에 못 씀 |
 | Broadcasting and telecommunications | `513` | 10.0% | —  방송·통신 — 산업생산 지수 없음 |
 | Motor vehicles, bodies and trailers, and parts | `3361MV` | 8.0% | IPG3361T3S |
 | Management of companies and enterprises | `55` | 7.3% | —  지주회사 — 산업 아님 |
@@ -144,7 +146,9 @@
 | Miscellaneous professional, scientific, and technica | `5412OP` | 4.3% | —  전문서비스 — 산업생산 지수 없음 |
 | Ambulatory health care services | `621` | 3.8% | — |
 
-제안 `customers.series`: **IPG334S** (비중 12.3%, IPG3344S → IPG334S)
+자기 산업 내 거래 12.3% — 후보에서 제외했다.
+
+제안 없음 — 지표화 가능한 최상위 고객 `Motor vehicles, bodies and trailers, and` 이 8.0% 에 불과해 전방수요를 대표하지 못한다. 현재 값 `IPG3344S` 유지 권장.
 
 ### 항공 애프터마켓·MRO
 
@@ -152,7 +156,7 @@
 
 | 고객 산업 | 코드 | 비중 | FRED 지표 |
 |---|---|---|---|
-| Other transportation equipment | `3364OT` | 88.5% | IPG3364T9S |
+| Other transportation equipment | `3364OT` | 88.5% | —  자기 산업 — 순환이라 낙수 축에 못 씀 |
 | Other transportation and support activities | `487OS` | 2.7% | — |
 | Miscellaneous professional, scientific, and technica | `5412OP` | 2.1% | —  전문서비스 — 산업생산 지수 없음 |
 | Air transportation | `481` | 1.7% | —  항공운송 — 산업생산 지수 없음 |
@@ -161,7 +165,9 @@
 | Motor vehicles, bodies and trailers, and parts | `3361MV` | 1.0% | IPG3361T3S |
 | Machinery | `333` | 0.4% | IPG333S |
 
-제안 `customers.series`: **IPG3364T9S** (비중 88.5%, 그대로)
+자기 산업 내 거래 88.5% — 후보에서 제외했다.
+
+제안 없음 — 지표화 가능한 최상위 고객 `Motor vehicles, bodies and trailers, and` 이 1.0% 에 불과해 전방수요를 대표하지 못한다. 현재 값 `IPG3364T9S` 유지 권장.
 
 ### 데이터센터 열관리
 
@@ -171,12 +177,14 @@
 |---|---|---|---|
 | Construction | `23` | 25.9% | —  건설 — 실질 산출 지수 없음(건설지출은 명목) |
 | Motor vehicles, bodies and trailers, and parts | `3361MV` | 15.8% | IPG3361T3S |
-| Machinery | `333` | 15.4% | IPG333S |
+| Machinery | `333` | 15.4% | —  자기 산업 — 순환이라 낙수 축에 못 씀 |
 | Oil and gas extraction | `211` | 5.9% | IPMINE |
 | Food and beverage and tobacco products | `311FT` | 2.8% | — |
 | Administrative and support services | `561` | 2.8% | —  사업지원 서비스 — 산업생산 지수 없음 |
 | Chemical products | `325` | 2.5% | IPG325S |
 | Fabricated metal products | `332` | 2.5% | IPG332S |
+
+자기 산업 내 거래 15.4% — 후보에서 제외했다.
 
 제안 `customers.series`: **IPG3361T3S** (비중 15.8%, IPG3341S → IPG3361T3S)
 
@@ -190,10 +198,12 @@
 | Truck transportation | `484` | 14.5% | —  트럭운송 — 산업생산 지수 없음 |
 | Air transportation | `481` | 9.8% | —  항공운송 — 산업생산 지수 없음 |
 | Utilities | `22` | 6.5% | IPUTIL |
-| Petroleum and coal products | `324` | 4.4% | IPG324S |
+| Petroleum and coal products | `324` | 4.4% | —  자기 산업 — 순환이라 낙수 축에 못 씀 |
 | Other transportation and support activities | `487OS` | 4.0% | — |
 | Farms | `111CA` | 3.4% | — |
 | Chemical products | `325` | 3.1% | IPG325S |
+
+자기 산업 내 거래 4.4% — 후보에서 제외했다.
 
 제안 없음 — 지표화 가능한 최상위 고객 `Utilities` 이 6.5% 에 불과해 전방수요를 대표하지 못한다. 현재 값 `IPG324S` 유지 권장.
 
@@ -204,7 +214,7 @@
 | 고객 산업 | 코드 | 비중 | FRED 지표 |
 |---|---|---|---|
 | Other real estate | `ORE` | 11.1% | — |
-| Utilities | `22` | 8.6% | IPUTIL |
+| Utilities | `22` | 8.6% | —  자기 산업 — 순환이라 낙수 축에 못 씀 |
 | Food services and drinking places | `722` | 7.3% | — |
 | Other retail | `4A0` | 4.4% | — |
 | Wholesale trade | `42` | 4.0% | —  도매 — 산업생산 지수 없음 |
@@ -212,7 +222,9 @@
 | Chemical products | `325` | 3.6% | IPG325S |
 | Farms | `111CA` | 3.1% | — |
 
-제안 없음 — 지표화 가능한 최상위 고객 `Utilities` 이 8.6% 에 불과해 전방수요를 대표하지 못한다. 현재 값 `IPUTIL` 유지 권장.
+자기 산업 내 거래 8.6% — 후보에서 제외했다.
+
+제안 없음 — 지표화 가능한 최상위 고객 `Chemical products` 이 3.6% 에 불과해 전방수요를 대표하지 못한다. 현재 값 `IPUTIL` 유지 권장.
 
 ### 철강·특수강
 
@@ -221,13 +233,15 @@
 | 고객 산업 | 코드 | 비중 | FRED 지표 |
 |---|---|---|---|
 | Fabricated metal products | `332` | 27.4% | IPG332S |
-| Primary metals | `331` | 23.5% | IPG331S |
+| Primary metals | `331` | 23.5% | —  자기 산업 — 순환이라 낙수 축에 못 씀 |
 | Motor vehicles, bodies and trailers, and parts | `3361MV` | 14.6% | IPG3361T3S |
 | Machinery | `333` | 10.7% | IPG333S |
 | Electrical equipment, appliances, and components | `335` | 7.4% | IPG335S |
 | Construction | `23` | 2.5% | —  건설 — 실질 산출 지수 없음(건설지출은 명목) |
 | Oil and gas extraction | `211` | 2.4% | IPMINE |
 | Other transportation equipment | `3364OT` | 1.8% | IPG3364T9S |
+
+자기 산업 내 거래 23.5% — 후보에서 제외했다.
 
 제안 `customers.series`: **IPG332S** (비중 27.4%, 그대로)
 
@@ -237,7 +251,7 @@
 
 | 고객 산업 | 코드 | 비중 | FRED 지표 |
 |---|---|---|---|
-| Other transportation equipment | `3364OT` | 88.5% | IPG3364T9S |
+| Other transportation equipment | `3364OT` | 88.5% | —  자기 산업 — 순환이라 낙수 축에 못 씀 |
 | Other transportation and support activities | `487OS` | 2.7% | — |
 | Miscellaneous professional, scientific, and technica | `5412OP` | 2.1% | —  전문서비스 — 산업생산 지수 없음 |
 | Air transportation | `481` | 1.7% | —  항공운송 — 산업생산 지수 없음 |
@@ -246,7 +260,9 @@
 | Motor vehicles, bodies and trailers, and parts | `3361MV` | 1.0% | IPG3361T3S |
 | Machinery | `333` | 0.4% | IPG333S |
 
-제안 `customers.series`: **IPG3364T9S** (비중 88.5%, 없음 → IPG3364T9S)
+자기 산업 내 거래 88.5% — 후보에서 제외했다.
+
+제안 없음 — 지표화 가능한 최상위 고객 `Motor vehicles, bodies and trailers, and` 이 1.0% 에 불과해 전방수요를 대표하지 못한다. 현재 값 `없음` 유지 권장.
 
 ## 4. 이 리포트가 못 하는 것
 
