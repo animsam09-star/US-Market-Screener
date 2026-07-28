@@ -1,8 +1,8 @@
 name: 스크리너 갱신
 
-# 시황에 맞춰 자동 갱신한다.
-#  - 평일 미국장 마감 후(21:30 UTC ≈ 서머타임 기준 마감 1시간 반 뒤) 하루 한 번
-#  - 필요하면 Actions 탭에서 수동 실행(workflow_dispatch)
+# 시황에 맞춰 자동 갱신하고, 비공개 URL(Cloudflare Pages + Access)로 배포한다.
+#  - 평일 미국장 마감 후 하루 한 번 (21:30 UTC)
+#  - Actions 탭에서 수동 실행 가능
 on:
   schedule:
     - cron: "30 21 * * 1-5"
@@ -13,10 +13,7 @@ on:
 
 permissions:
   contents: read
-  pages: write
-  id-token: write
 
-# 갱신이 겹치면 최신 것만 남긴다
 concurrency:
   group: screener
   cancel-in-progress: true
@@ -34,7 +31,7 @@ jobs:
 
       - run: pip install -r requirements.txt
 
-      # 이전 실행의 캐시를 재사용해 SEC 호출을 줄인다(SEC 는 10 req/s 제한)
+      # 이전 실행 캐시를 재사용해 SEC 호출을 줄인다 (SEC 는 10 req/s 제한)
       - name: 데이터 캐시 복원
         uses: actions/cache@v4
         with:
@@ -46,7 +43,7 @@ jobs:
         env:
           BEA_API_KEY: ${{ secrets.BEA_API_KEY }}
           # SEC 는 연락처가 담긴 User-Agent 를 요구한다. 없으면 403.
-          SCREENER_UA: ${{ secrets.SCREENER_UA || 'DaolResearch RA screener' }}
+          SCREENER_UA: ${{ secrets.SCREENER_UA }}
         run: python run.py --no-open
 
       - name: 결과 확인
@@ -54,23 +51,21 @@ jobs:
           test -s out/screener.html || { echo "대시보드가 생성되지 않았습니다"; exit 1; }
           echo "생성됨: $(wc -c < out/screener.html) bytes"
 
-      # 저장소가 private 이고 Pages 를 안 쓰는 경우에도 결과를 받을 수 있게
+      # Cloudflare 가 안 되는 경우에도 결과를 받을 수 있는 백업 경로
       - uses: actions/upload-artifact@v4
         with:
           name: screener-html
           path: out/screener.html
           retention-days: 30
 
-      - uses: actions/upload-pages-artifact@v3
+      # 비공개 배포. Cloudflare Access 가 앞단에서 이메일 인증을 요구하므로
+      # URL 을 알아도 등록된 계정이 아니면 열 수 없다.
+      - name: Cloudflare Pages 배포
+        if: ${{ env.CF_TOKEN != '' }}
+        env:
+          CF_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        uses: cloudflare/wrangler-action@v3
         with:
-          path: out
-
-  deploy:
-    needs: build
-    runs-on: ubuntu-latest
-    environment:
-      name: github-pages
-      url: ${{ steps.deploy.outputs.page_url }}
-    steps:
-      - id: deploy
-        uses: actions/deploy-pages@v4
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          command: pages deploy out --project-name=us-market-screener --branch=main

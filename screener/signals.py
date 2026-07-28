@@ -164,10 +164,25 @@ def aggregate_financials(tickers: list[str], tmap: dict[str, int],
         agg["capex_dep_3y"] = statistics.fmean([v for _, v in ratios[-12:]])
         agg["capex_dep_series"] = ratios
 
-    ages = [(k, acc[k] / ppe_g[k]) for k in sorted(set(ppe_g) & set(acc)) if ppe_g[k]]
+    # 설비 소진율은 분자·분모를 반드시 같은 기업 집합에서 내야 한다.
+    # gsum 을 따로 쓰면 감가상각누계는 5개사, 총PP&E 는 8개사에서 나올 수 있고
+    # 그러면 비율이 실제보다 낮게 찍힌다(유틸리티 소진율 15% 가 그 결과였다).
+    ages = []
+    for k in sorted(set(ppe_g) & set(acc)):
+        num = den = 0.0
+        n = 0
+        for d in per.values():
+            g, a = d.get("ppe_gross", {}).get(k), d.get("accum_dep", {}).get(k)
+            if g and a:
+                den += g
+                num += a
+                n += 1
+        if n >= min_co and den:
+            ages.append((k, num / den))
     if ages:
         agg["ppe_age"] = ages[-1][1]
         agg["ppe_age_hist"] = [v for _, v in ages[-40:]]
+        agg["ppe_age_n"] = n
 
     # 영업이익률 — ⑦ 스프레드의 '아직 마진에 안 왔다' 확증에 쓰인다
     eb = dict(ttm(ebit))
