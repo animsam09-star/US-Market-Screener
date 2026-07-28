@@ -205,4 +205,18 @@ def _apply(path: Path, updates: dict) -> None:
 
 
 if __name__ == "__main__":
-    raise SystemExit(main())
+    # 예기치 못한 예외로 죽으면 리포트가 갱신되지 않아, 저장소에는 낡은 내용이
+    # 남고 원인을 엉뚱한 데서 찾게 된다(실제로 그랬다: BEA 는 이미 성공했는데
+    # 낡은 리포트 때문에 '키가 비활성'이라고 이틀치 판단을 잘못했다).
+    try:
+        raise SystemExit(main())
+    except SystemExit:
+        raise
+    except Exception:
+        import traceback
+        tb = traceback.format_exc()
+        _write(["# 고객군 자동 지정 리포트", "",
+                f"생성: {datetime.now().astimezone().strftime('%Y-%m-%d %H:%M:%S %Z')}", "",
+                "## 실패: 예기치 못한 오류", "", "```", tb.strip(), "```"])
+        print(tb)
+        raise SystemExit(9)

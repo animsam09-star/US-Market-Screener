@@ -39,11 +39,11 @@ def _call(params: str, ttl: float = 24 * 30) -> dict:
         except FetchError as e:
             raise BeaError(f"호출 실패: {e}") from e
 
-        res = (d.get("BEAAPI") or {}).get("Results") or {}
-        if "Error" not in res:
+        res = (d.get("BEAAPI") or {}).get("Results")
+        err = _find_error(res)
+        if err is None:
             return res
 
-        err = res["Error"]
         msg = err.get("APIErrorDescription", err) if isinstance(err, dict) else err
         if attempt == 0 and purge(url):
             continue                      # 캐시된 오류였을 수 있다. 실물로 재확인
@@ -52,9 +52,51 @@ def _call(params: str, ttl: float = 24 * 30) -> dict:
     raise BeaError("BEA 호출 실패")
 
 
+def _find_error(res) -> dict | str | None:
+    """Results 안 어디에 있든 Error 를 찾아낸다."""
+    if isinstance(res, dict):
+        return res.get("Error")
+    if isinstance(res, list):
+        for r in res:
+            if isinstance(r, dict) and r.get("Error"):
+                return r["Error"]
+    return None
+
+
+def _collect(res, key: str) -> list:
+    """Results 가 dict 일 수도 list 일 수도 있다.
+
+    BEA 는 메서드마다 모양이 다르다. GetParameterValues 는 dict 로 주고,
+    GetData 는 결과 묶음의 **리스트**로 준다. 이걸 dict 로 가정했다가
+    'list' object has no attribute 'get' 로 죽었다.
+    """
+    out: list = []
+    if isinstance(res, dict):
+        v = res.get(key)
+        if isinstance(v, list):
+            out.extend(v)
+        elif v:
+            out.append(v)
+    elif isinstance(res, list):
+        for r in res:
+            if isinstance(r, dict):
+                out.extend(_collect(r, key))
+    return out
+
+
+def describe_shape(res) -> str:
+    """응답 구조를 한 줄로. 다음에 또 모양이 다를 때 근거가 된다."""
+    if isinstance(res, dict):
+        return f"dict(keys={sorted(res)[:8]})"
+    if isinstance(res, list):
+        inner = sorted(res[0]) [:8] if res and isinstance(res[0], dict) else "?"
+        return f"list(len={len(res)}, [0].keys={inner})"
+    return type(res).__name__
+
+
 def list_tables() -> list[dict]:
     res = _call("method=GetParameterValues&datasetname=InputOutput&ParameterName=TableID")
-    return res.get("ParamValue", []) or []
+    return _collect(res, "ParamValue")
 
 
 def pick_use_table(tables: list[dict]) -> tuple[str, str]:
@@ -80,9 +122,10 @@ def pick_use_table(tables: list[dict]) -> tuple[str, str]:
 
 def fetch_use_table(table_id: str, year: str) -> list[dict]:
     res = _call(f"method=GetData&datasetname=InputOutput&TableID={table_id}&Year={year}")
-    data = res.get("Data") or []
+    data = _collect(res, "Data")
     if not data:
-        raise BeaError(f"TableID={table_id}, Year={year} 데이터 없음")
+        raise BeaError(f"TableID={table_id}, Year={year} 데이터 없음 "
+                       f"(응답 구조: {describe_shape(res)})")
     return data
 
 
