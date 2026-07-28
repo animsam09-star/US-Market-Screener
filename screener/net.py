@@ -53,6 +53,24 @@ def _throttle(host: str) -> None:
     _last_call[host] = time.time()
 
 
+def cache_path(url: str, json_body: object | None = None) -> Path:
+    """이 URL 의 캐시 파일 경로. 오류 응답을 걷어내야 할 때 쓴다."""
+    return _cache_path(url, json_body)
+
+
+def purge(url: str, json_body: object | None = None) -> bool:
+    """캐시된 응답을 지운다.
+
+    HTTP 200 에 오류를 담아 보내는 API 가 있다(BEA 가 그렇다). 그런 응답을
+    캐시하면 원인이 해소된 뒤에도 계속 옛 오류를 읽는다.
+    """
+    p = _cache_path(url, json_body)
+    if p.exists():
+        p.unlink()
+        return True
+    return False
+
+
 def _cache_path(url: str, body: object | None) -> Path:
     key = hashlib.sha256((url + json.dumps(body, sort_keys=True) if body else url).encode()).hexdigest()[:24]
     return CACHE_DIR / f"{key}.bin"

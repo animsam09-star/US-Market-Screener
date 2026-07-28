@@ -15,7 +15,7 @@ import re
 from collections import defaultdict
 
 from .keys import bea_key
-from .net import FetchError, fetch_json
+from .net import FetchError, fetch_json, purge
 
 BASE = "https://apps.bea.gov/api/data"
 
@@ -28,15 +28,28 @@ def _call(params: str, ttl: float = 24 * 30) -> dict:
     k = bea_key()
     if not k:
         raise BeaError("BEA 키 없음 (환경변수 BEA_API_KEY 또는 bea_key.txt)")
-    try:
-        d = fetch_json(f"{BASE}?&UserID={k}&{params}&ResultFormat=JSON", ttl_hours=ttl)
-    except FetchError as e:
-        raise BeaError(f"호출 실패: {e}") from e
-    res = (d.get("BEAAPI") or {}).get("Results") or {}
-    if "Error" in res:
+    url = f"{BASE}?&UserID={k}&{params}&ResultFormat=JSON"
+
+    # BEA 는 오류를 HTTP 200 에 담아 보낸다. 그런 응답이 캐시에 눌러앉으면
+    # 키를 활성화한 뒤에도 계속 옛 오류를 읽는다. 그래서 오류를 만나면
+    # 캐시를 걷어내고 한 번 다시 받는다 — 같은 실행 안에서 복구되도록.
+    for attempt in (0, 1):
+        try:
+            d = fetch_json(url, ttl_hours=ttl if attempt == 0 else 0)
+        except FetchError as e:
+            raise BeaError(f"호출 실패: {e}") from e
+
+        res = (d.get("BEAAPI") or {}).get("Results") or {}
+        if "Error" not in res:
+            return res
+
         err = res["Error"]
-        raise BeaError(f"BEA 거부: {err.get('APIErrorDescription', err)}")
-    return res
+        msg = err.get("APIErrorDescription", err) if isinstance(err, dict) else err
+        if attempt == 0 and purge(url):
+            continue                      # 캐시된 오류였을 수 있다. 실물로 재확인
+        purge(url)                        # 오류를 캐시에 남기지 않는다
+        raise BeaError(f"BEA 거부: {msg}")
+    raise BeaError("BEA 호출 실패")
 
 
 def list_tables() -> list[dict]:
