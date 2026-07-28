@@ -1,0 +1,317 @@
+"""회귀 테스트 — 실제로 겪은 사고를 하나씩 고정한다.
+
+    python tests/run_tests.py
+
+규칙: 판별 로직을 고치면 이 스위트를 돌려 전부 PASS 를 확인한다. 새로 발견한
+오류는 **고치기 전에** 여기 케이스를 먼저 추가한다. 각 테스트 이름 옆의 설명은
+"무엇이 잘못됐었나"이지 "무엇을 검사하나"가 아니다 — 그래야 나중에 이 제약이
+왜 있는지 알 수 있다.
+
+네트워크를 쓰지 않는다. 전부 합성 데이터다.
+"""
+from __future__ import annotations
+
+import json
+import sys
+from datetime import date, timedelta
+from pathlib import Path
+
+sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+
+RESULTS: list[tuple[str, bool, str]] = []
+
+
+def check(name: str, cond: bool, detail: str = "") -> None:
+    RESULTS.append((name, bool(cond), detail))
+
+
+# ---------------------------------------------------------------- F1
+def f1_ytd_differencing():
+    """미국 기업은 분기가 아니라 누적(YTD)으로 보고한다.
+
+    사고: '3개월 구간'만 받았더니 Q1 만 잡혔다(Duke 매출 1건). capex 가
+    15건밖에 안 나와 낙수·캐펙스 축이 통째로 죽어 있었다.
+    """
+    from screener.sources import xbrl_quarterly
+
+    facts = {"facts": {"us-gaap": {"Revenues": {"units": {"USD": [
+        {"start": "2024-01-01", "end": "2024-03-31", "val": 100, "filed": "2024-04-30"},
+        {"start": "2024-01-01", "end": "2024-06-30", "val": 250, "filed": "2024-07-30"},
+        {"start": "2024-01-01", "end": "2024-09-30", "val": 420, "filed": "2024-10-30"},
+        {"start": "2024-01-01", "end": "2024-12-31", "val": 600, "filed": "2025-02-28"},
+    ]}}}}}
+    q = xbrl_quarterly(facts, "revenue")
+    check("F1 YTD→분기 복원: 4개 분기 전부", len(q) == 4, f"실제 {len(q)}개")
+    check("F1 Q2 = H1 − Q1 = 150", q.get((2024, 2)) == 150, f"{q.get((2024, 2))}")
+    check("F1 Q4 = FY − 9M = 180", q.get((2024, 4)) == 180, f"{q.get((2024, 4))}")
+
+
+# ---------------------------------------------------------------- F2
+def f2_no_economy_wide_fallback():
+    """전 제조업 총계로 폴백하면 모든 테마가 같은 점수를 받는다.
+
+    사고: ⑧⑨축이 ISRATIO/AMTMUO 로 폴백해 8개 테마 전부가 재고 1.28,
+    잔고 2.42 를 받았고, 최강2축 방식이라 촉매 점수가 모두 80 으로 같아졌다.
+    """
+    from screener.axes import a8_inventory, a9_bottleneck
+
+    def boom(_):
+        raise AssertionError("산업 시리즈 미지정인데 네트워크를 호출했다")
+
+    s8 = a8_inventory({}, boom)
+    s9 = a9_bottleneck({}, boom)
+    check("F2 재고축: 시리즈 미지정이면 nodata", s8.status == "nodata", s8.status)
+    check("F2 병목축: 시리즈 미지정이면 nodata", s9.status == "nodata", s9.status)
+    check("F2 사유를 남긴다", "미지정" in s8.reason, s8.reason[:40])
+
+
+# ---------------------------------------------------------------- F3
+def f3_bea_result_shapes():
+    """BEA 는 메서드마다 Results 모양이 다르다.
+
+    사고: GetParameterValues 는 dict, GetData 는 list 로 주는데 둘 다 dict 로
+    가정해 'list' object has no attribute 'get' 로 죽었다.
+    """
+    from screener.bea import _collect, _find_error
+
+    d = {"ParamValue": [{"Key": "259", "Desc": "Use ... Summary"}]}
+    l = [{"Statistic": "Use", "Data": [{"RowCode": "335", "ColCode": "22"}]}]
+    check("F3 dict 모양 파싱", len(_collect(d, "ParamValue")) == 1)
+    check("F3 list 모양 파싱", len(_collect(l, "Data")) == 1)
+    check("F3 list 안의 Error 탐지",
+          _find_error([{"Error": {"APIErrorDescription": "x"}}]) is not None)
+    check("F3 정상 응답은 Error 없음", _find_error(l) is None)
+
+
+# ---------------------------------------------------------------- F4
+def f4_bea_final_demand_excluded():
+    """최종수요는 '고객 산업'이 아니다.
+
+    사고: F02E(설비투자)가 한 테마에서 60% 를 차지하며 1위 고객으로 올라왔다.
+    이름 필터로는 안 걸려서 코드(F로 시작)로 잘라내야 했다.
+    """
+    from screener.bea import downstream_of
+
+    data = [{"RowCode": "335", "ColCode": "F02E", "ColDescr": "Nonresidential fixed investment", "DataValue": "1000"},
+            {"RowCode": "335", "ColCode": "F02R", "ColDescr": "Residential fixed investment", "DataValue": "500"},
+            {"RowCode": "335", "ColCode": "23", "ColDescr": "Construction", "DataValue": "300"},
+            {"RowCode": "335", "ColCode": "333", "ColDescr": "Machinery", "DataValue": "100"}]
+    r = downstream_of(data, "335")
+    codes = [c for c, _, _ in r]
+    check("F4 F02E 제외", "F02E" not in codes, str(codes))
+    check("F4 F02R 제외", "F02R" not in codes, str(codes))
+    check("F4 실제 산업만 남음", codes == ["23", "333"], str(codes))
+    check("F4 비중은 남은 것끼리 재계산", abs(r[0][2] - 0.75) < 1e-6, f"{r[0][2]:.3f}")
+
+
+# ---------------------------------------------------------------- F5
+def f5_naics_matching_direction():
+    """접두 비교 방향을 반대로 짜면 항공기가 자동차가 된다.
+
+    사고: NAICS 3364(항공기)가 BEA 3361MV(자동차)로 매칭됐다.
+    """
+    from screener.bea import match_row_code, naics_from_fred
+
+    codes = [("22", "Utilities"), ("333", "Machinery"), ("334", "Computer"),
+             ("335", "Electrical"), ("3361MV", "Motor vehicles"),
+             ("3364OT", "Other transportation equipment")]
+    check("F5 3364 → 3364OT (자동차 아님)", match_row_code(codes, "3364")[0] == "3364OT",
+          str(match_row_code(codes, "3364")))
+    check("F5 3344 → 334", match_row_code(codes, "3344")[0] == "334")
+    check("F5 335 정확일치", match_row_code(codes, "335")[0] == "335")
+    check("F5 IPUTIL → 22 (코드가 이름에 없는 총계)", naics_from_fred("IPUTIL") == "22")
+    check("F5 IPG3364T9S → 3364", naics_from_fred("IPG3364T9S") == "3364")
+
+
+# ---------------------------------------------------------------- F6
+def f6_circuit_breaker():
+    """차단된 호스트에 계속 타임아웃을 먹으면 실행이 몇 시간짜리가 된다.
+
+    사고: 러너에서 스크리너 실행이 4분을 넘겨 계속 돌았다. 로컬은 5초다.
+    """
+    import screener.net as N
+
+    N._dead.clear()
+    N._fail_streak.clear()
+    host = "unit-test-blocked.invalid"
+    for i in range(N._DEAD_AFTER):
+        try:
+            N.fetch(f"https://{host}/p{i}", ttl_hours=0, timeout=1, retries=1)
+        except N.FetchError:
+            pass
+    check("F6 연속 실패 후 차단 판정", host in N._dead, str(N.host_status()))
+
+    # 차단 후에는 네트워크를 건드리지 않고 즉시 실패해야 한다
+    import time
+    t0 = time.time()
+    try:
+        N.fetch(f"https://{host}/after", ttl_hours=0, timeout=30, retries=3)
+    except N.FetchError as e:
+        check("F6 차단 후 즉시 실패", time.time() - t0 < 0.5, f"{time.time() - t0:.2f}초")
+        check("F6 사유 명시", "생략" in str(e), str(e)[:50])
+    N._dead.clear()
+    N._fail_streak.clear()
+
+
+# ---------------------------------------------------------------- F7
+def f7_empty_secret_fallback():
+    """미설정 시크릿은 환경변수를 '없음'이 아니라 '빈 문자열'로 만든다.
+
+    사고: os.environ.get(name, 기본값) 이 빈 문자열을 돌려줘 User-Agent 가
+    비고, SEC 가 403 을 냈다.
+    """
+    import importlib
+    import os
+
+    old = os.environ.get("SCREENER_UA")
+    try:
+        os.environ["SCREENER_UA"] = ""
+        import screener.net as N
+        importlib.reload(N)
+        check("F7 빈 시크릿이면 기본 UA", "@" in N.UA and len(N.UA) > 10, repr(N.UA))
+        os.environ["SCREENER_UA"] = "Test RA t@x.com"
+        importlib.reload(N)
+        check("F7 설정되면 그 값 사용", N.UA == "Test RA t@x.com", repr(N.UA))
+    finally:
+        if old is None:
+            os.environ.pop("SCREENER_UA", None)
+        else:
+            os.environ["SCREENER_UA"] = old
+        import screener.net as N
+        importlib.reload(N)
+
+
+# ---------------------------------------------------------------- F8
+def f8_catalyst_scoping():
+    """점수는 테마가 선언한 축 안에서만 나와야 한다.
+
+    사고: 방산이 1위였는데 점수를 만든 축이 ⑧재고와 ③신기술이었다.
+    방산 논지는 예산 확정 다년 계약(정책·병목)인데 무관한 축이 순위를 만들었다.
+    """
+    from screener.axes import Signal, resolve_catalysts
+    from screener.signals import ThemeResult
+
+    r = ThemeResult(name="t", thesis="", tickers=["A"])
+    r.claimed, _ = resolve_catalysts(["정책", "병목"])
+    r.catalyst = [
+        Signal("A5", "⑤ 정책", 10, "ok", "d"),
+        Signal("A9", "⑨ 병목", 20, "ok", "d"),
+        Signal("A8", "⑧ 재고", 95, "ok", "d"),      # 선언 안 한 축
+        Signal("A3", "③ 신기술", 90, "ok", "d"),     # 선언 안 한 축
+    ]
+    check("F8 선언 축만 점수화 (15점)", abs((r.catalyst_score or 0) - 15) < 0.01,
+          f"{r.catalyst_score}")
+    check("F8 예상 밖 축은 따로 보고", {s.key for s in r.incidental_axes} == {"A8", "A3"},
+          str([s.key for s in r.incidental_axes]))
+    check("F8 축은 살아있으나 신호 약함을 구별",
+          r.thesis_status == "성립하나 신호없음", r.thesis_status)
+
+    r2 = ThemeResult(name="t2", thesis="", tickers=["A"])
+    r2.claimed, _ = resolve_catalysts(["공급"])
+    r2.catalyst = [Signal("A2", "② 공급", 0, "rejected", "", "사양산업")]
+    check("F8 주장 축이 기각되면 미성립", r2.thesis_status == "미성립", r2.thesis_status)
+
+
+# ---------------------------------------------------------------- F9
+def f9_inventory_covid_window():
+    """10년 창이 2020~22 재고 급증을 품고 있어 현재를 과도하게 낮게 보이게 한다.
+
+    사고: 전기장비가 10년 기준 0분위인데 전체 이력으로는 47분위(중앙값)였다.
+    """
+    from screener.axes import a8_inventory
+
+    base = date(2000, 1, 1)
+    # 재현하려는 상황: 최근 10년은 재고가 높게 유지돼 현재(100)가 최저 분위로
+    # 보이지만, 그 이전 오랜 기간은 더 낮아서 전체 이력으로는 중앙값 위다.
+    # 즉 "10년 최저"는 참이고 "역사적으로 낮다"는 거짓인 경우.
+    inv, ship = [], []
+    for i in range(320):
+        d = date(base.year + i // 12, i % 12 + 1, 1)
+        if i == 319:
+            v = 100.0                 # 현재
+        elif i >= 200:
+            v = 120.0                 # 최근 10년: 높게 유지
+        else:
+            v = 80.0                  # 그 이전: 더 낮았다
+        inv.append((d, v))
+        ship.append((d, 100.0))
+    series = {"INV": inv, "SHIP": ship, "NO": [(d, 100 + i) for i, (d, _) in enumerate(ship)]}
+    cfg = {"inventories": "INV", "shipments": "SHIP", "new_orders": "NO"}
+    s = a8_inventory(cfg, lambda k: series[k])
+    check("F9 코로나 왜곡 의심 시 미확증 강등", s.status == "unconfirmed", s.status)
+    check("F9 사유에 근거 표시", "전체 이력" in s.reason, s.reason[:50])
+
+
+# ---------------------------------------------------------------- F10
+def f10_newtech_sample_floor():
+    """표본이 작으면 확산이 아니라 잡음이다.
+
+    사고: 방산 '탄약 생산' 언급이 4개사→5개사인데 +25% 확산으로 읽어 56점을 줬다.
+    """
+    from screener.axes import a3_newtech
+
+    def tiny(kw, s, e):
+        return {"hits": 6, "entities": ["a", "b", "c", "d", "e"][:5 if s > e else 4],
+                "sic": [("3812", 6)], "censored": False}
+
+    s = a3_newtech({"edgar_keywords": ["munitions production"]}, {}, tiny)
+    check("F10 표본 8개사 미만이면 nodata", s.status == "nodata", f"{s.status} {s.score}")
+    check("F10 사유에 모수 표시", "표본" in s.reason or "언급량" in s.reason, s.reason[:40])
+
+
+# ---------------------------------------------------------------- F11
+def f11_vendored_ticker_fallback():
+    """SEC 가 403 을 내면 티커 매핑 하나 때문에 실행 전체가 죽었다."""
+    import screener.sources as S
+    from screener.net import FetchError
+
+    orig = S.fetch_json
+    try:
+        S.fetch_json = lambda *a, **k: (_ for _ in ()).throw(FetchError("403 모사"))
+        m = S.sec_ticker_map()
+        check("F11 동봉 사본으로 폴백", len(m) > 1000, f"{len(m)}개")
+        check("F11 값이 정상", m.get("NVDA") == 1045810, str(m.get("NVDA")))
+    finally:
+        S.fetch_json = orig
+
+
+# ---------------------------------------------------------------- F12
+def f12_snapshot_fallback():
+    """SEC 재무는 분기에 한 번 바뀌는데 매일 원격에서 받고 있었다."""
+    from screener.sources import financials_snapshot, snapshot_quarterly
+
+    snap = financials_snapshot()
+    n = len(snap.get("companies") or {})
+    check("F12 재무 스냅샷 동봉됨", n > 50, f"{n}개사")
+    q = snapshot_quarterly("ETN", "revenue")
+    check("F12 분기 시계열 복원", len(q) > 10, f"{len(q)}개 분기")
+    check("F12 키가 (연,분기) 튜플", all(isinstance(k, tuple) and len(k) == 2 for k in q))
+
+
+def main() -> int:
+    for fn in [f1_ytd_differencing, f2_no_economy_wide_fallback, f3_bea_result_shapes,
+               f4_bea_final_demand_excluded, f5_naics_matching_direction,
+               f6_circuit_breaker, f7_empty_secret_fallback, f8_catalyst_scoping,
+               f9_inventory_covid_window, f10_newtech_sample_floor,
+               f11_vendored_ticker_fallback, f12_snapshot_fallback]:
+        try:
+            fn()
+        except Exception as e:
+            import traceback
+            check(f"{fn.__name__} 실행 실패", False, f"{type(e).__name__}: {e}")
+            traceback.print_exc()
+
+    ok = sum(1 for _, p, _ in RESULTS if p)
+    for name, passed, detail in RESULTS:
+        mark = "PASS" if passed else "FAIL"
+        line = f"  [{mark}] {name}"
+        if not passed and detail:
+            line += f"  -> {detail}"
+        print(line)
+    print(f"\n{ok}/{len(RESULTS)} PASS")
+    return 0 if ok == len(RESULTS) else 1
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

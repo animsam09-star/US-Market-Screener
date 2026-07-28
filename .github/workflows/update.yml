@@ -41,6 +41,11 @@ jobs:
 
       - run: pip install -r requirements.txt
 
+      # 판별 로직 회귀를 여기서 막는다. 오늘 겪은 사고들이 전부 케이스로 있다.
+      # 네트워크를 쓰지 않으므로 러너 환경과 무관하게 돈다.
+      - name: 회귀 테스트
+        run: python tests/run_tests.py
+
       # 이전 실행 캐시를 재사용해 SEC 호출을 줄인다 (SEC 는 10 req/s 제한)
       - name: 데이터 캐시 복원
         uses: actions/cache@v4
