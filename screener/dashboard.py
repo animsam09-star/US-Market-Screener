@@ -194,7 +194,25 @@ def _card(r: ThemeResult, rank: int) -> str:
     tops = r.top_axes
     drivers = ("점수를 만든 축: "
                + " / ".join(f"<strong>{_e(s.label)}</strong> {s.effective:.0f}" for s in tops)
-               ) if tops else "살아있는 촉매 축 없음"
+               ) if tops else "주장한 촉매 축이 전부 죽어 있음"
+
+    # 논지 성립 여부 — 이 도구의 가장 중요한 출력.
+    # "무엇이 마침 높나"가 아니라 "내가 말한 이유가 데이터로 서나"를 답한다.
+    TH = {"성립": ("good", "논지 성립"), "미확증": ("warn", "논지 미확증"),
+          "일부기각": ("bad", "논지 일부 기각"), "일부확인불가": ("warn", "논지 일부 확인불가"),
+          "성립하나 신호없음": ("warn", "반증 안 됐으나 신호 없음"),
+          "미성립": ("bad", "논지 미성립"), "미선언": ("na", "촉매 미선언")}
+    tcls, ttxt = TH.get(r.thesis_status, ("na", r.thesis_status))
+    claim_names = " · ".join(s.label.split(" ", 1)[-1] for s in r.claimed_axes)
+    thesis_line = (f'<p class="claim"><span class="verdict v-{tcls}">{_e(ttxt)}</span>'
+                   f'<span class="claim-list">주장한 촉매: {_e(claim_names)}</span></p>')
+
+    inc = r.incidental_axes
+    inc_line = ""
+    if inc:
+        inc_line = ('<p class="incidental">예상 밖 촉매(순위 미반영): '
+                    + " · ".join(f"{_e(s.label)} {s.effective:.0f}" for s in inc[:3])
+                    + ' <em>— 논지에 없던 힘이 작동 중일 수 있다</em></p>')
 
     return f"""
 <article class="card">
@@ -214,7 +232,9 @@ def _card(r: ThemeResult, rank: int) -> str:
   <p class="tick-list">{_e(" · ".join(r.tickers))}
      <em>· SEC 재무 {sp.get('n_companies', 0)}개사{cust_txt} · 살아있는 축 {r.coverage:.0f}%
      · 기각 {r.n_rejected}개</em></p>
+  {thesis_line}
   <p class="drivers">{drivers}</p>
+  {inc_line}
   <div class="sparks">{''.join(sparks)}</div>
   <div class="tables">
     <div>
@@ -337,8 +357,18 @@ border:1px solid currentColor;vertical-align:1px;letter-spacing:.02em}
 .st-warn{color:var(--text-secondary)}
 .st-rej{color:var(--critical)}
 .st-na{color:var(--muted)}
-.drivers{margin:0 0 10px;font-size:12px;color:var(--text-secondary)}
+.drivers{margin:0 0 6px;font-size:12px;color:var(--text-secondary)}
 .drivers strong{color:var(--text-primary);font-weight:600}
+.claim{margin:0 0 6px;font-size:12px;display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.verdict{font-size:11.5px;font-weight:600;padding:2px 9px;border-radius:6px;
+border:1px solid currentColor}
+.v-good{color:var(--good)}
+.v-warn{color:var(--warning)}
+.v-bad{color:var(--critical)}
+.v-na{color:var(--muted)}
+.claim-list{color:var(--text-secondary)}
+.incidental{margin:0 0 10px;font-size:11.5px;color:var(--muted)}
+.incidental em{font-style:normal}
 h4 em{font-style:normal;text-transform:none;letter-spacing:0;color:var(--muted);
 font-weight:400}
 .bar{height:6px;background:var(--grid);border-radius:99px;overflow:hidden;margin-top:5px}

@@ -39,6 +39,7 @@ benchmark: SPY
 themes:
   - name: 전력기기·그리드
     thesis: 데이터센터/전동화로 전력 수요는 뛰는데 변압기·개폐기 증설은 리드타임이 수년
+    catalysts: [공급, 낙수]
     lead_time: 12~24M
     tickers: [ETN, PWR, POWL, HUBB, AZZ, NVT, ATKR, VRT]
     customers:
@@ -60,6 +61,7 @@ themes:
 
   - name: 반도체 첨단패키징·후공정
     thesis: 미세화 한계로 가치가 전공정에서 후공정/패키징으로 이동
+    catalysts: [신기술, 낙수]
     lead_time: 6~18M
     tickers: [AMKR, ONTO, CAMT, KLIC, ACLS, COHU, FORM]
     customers:
@@ -81,6 +83,7 @@ themes:
 
   - name: 항공 애프터마켓·MRO
     thesis: 기재 노후화 + 신규 인도 지연으로 기존 기체를 더 오래 굴려야 함. 정비 수요는 산수
+    catalysts: [교체, 병목]
     lead_time: 12~36M
     tickers: [HEI, TDG, HWM, RBC, DCO, AIR, CW]
     customers:
@@ -95,13 +98,14 @@ themes:
       capacity_index: CAPG3364T9S
       ppi_output: PCU3364133641
       ppi_input: WPU1017
-      inventories: A36STI
-      shipments: A36SVS
-      new_orders: A36SNO
-      unfilled_orders: U36SUO
+      inventories: ANAPTI
+      shipments: ANAPVS
+      new_orders: ANAPNO
+      unfilled_orders: UNAPUO
 
   - name: 데이터센터 열관리
     thesis: 랙 전력밀도 상승으로 공랭이 한계에 도달 → 액침·직접칩냉각으로 기술 전환
+    catalysts: [신기술, 낙수]
     lead_time: 6~18M
     tickers: [VRT, MOD, SPXC, AAON, TT, CARR]
     customers:
@@ -121,6 +125,7 @@ themes:
 
   - name: 정유·정제마진
     thesis: 정제설비 순증설이 수년째 마이너스인데 수요는 유지 — 전형적 공급 비탄력
+    catalysts: [공급, 스프레드]
     lead_time: 3~9M
     tickers: [VLO, MPC, PSX, DINO, PBF, DK]
     customers:
@@ -140,6 +145,7 @@ themes:
 
   - name: 원자력 연료주기
     thesis: 각국 원전 회귀 + 러시아산 농축우라늄 배제로 서방 농축·변환 능력이 병목
+    catalysts: [정책, 병목]
     lead_time: 12~36M
     tickers: [CCJ, LEU, UEC, DNN, NXE, BWXT]
     customers:
@@ -153,6 +159,7 @@ themes:
 
   - name: 철강·특수강
     thesis: 관세·리쇼어링 수요 대비 국내 증설 제한. 캐펙스 사이클 바닥 여부가 관건
+    catalysts: [캐펙스, 정책]
     lead_time: 6~18M
     tickers: [NUE, STLD, CMC, X, CLF]
     customers:
@@ -174,6 +181,7 @@ themes:
 
   - name: 방산·탄약
     thesis: 재고 소진분 보충 + 각국 GDP 대비 국방비 상향. 예산은 이미 확정된 다년 계약
+    catalysts: [정책, 병목]
     lead_time: 12~36M
     tickers: [LMT, NOC, GD, LHX, HII, LDOS]
     customers: {}          # 주요 고객이 정부라 상장 고객군이 없다 — ①④축은 자동 비활성
@@ -184,7 +192,7 @@ themes:
       industrial_production: IPG3364T9S
       capacity_utilization: CAPUTLG3364T9S
       capacity_index: CAPG3364T9S
-      inventories: A36STI
-      shipments: A36SVS
-      new_orders: A36SNO
-      unfilled_orders: U36SUO
+      inventories: ADEFTI
+      shipments: ADEFVS
+      new_orders: ADEFNO
+      unfilled_orders: UDEFUO

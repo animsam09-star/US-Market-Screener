@@ -35,10 +35,55 @@ class ThemeResult:
     notes: list[str] = field(default_factory=list)
     series: dict = field(default_factory=dict)
     customers: dict = field(default_factory=dict)
+    claimed: set = field(default_factory=set)      # 테마가 선언한 촉매 축 키
+    unknown_catalysts: list = field(default_factory=list)
+
+    @property
+    def claimed_axes(self) -> list[Signal]:
+        """테마가 '이것 때문에 오른다'고 선언한 축들."""
+        if not self.claimed:
+            return list(self.catalyst)             # 미선언이면 종전대로 전체
+        return [s for s in self.catalyst if s.key in self.claimed]
+
+    @property
+    def incidental_axes(self) -> list[Signal]:
+        """선언하지 않았는데 강한 축 — 순위엔 안 넣고 단서로만 본다."""
+        if not self.claimed:
+            return []
+        return sorted(
+            [s for s in self.catalyst
+             if s.key not in self.claimed and (s.effective or 0) >= 60],
+            key=lambda s: -(s.effective or 0))
 
     @property
     def catalyst_score(self) -> float | None:
-        return top_n_mean([s.effective for s in self.catalyst], 2)
+        # 점수는 주장 축 안에서만 낸다. 무관한 축이 우연히 높다고 순위를 만들면
+        # 그건 '왜 오르나'가 아니라 '무엇이 마침 높나'가 된다.
+        return top_n_mean([s.effective for s in self.claimed_axes], 2)
+
+    @property
+    def thesis_status(self) -> str:
+        """논지 성립 여부 — 이 도구의 가장 중요한 출력.
+
+        축의 '상태'만 보면 안 된다. 방산은 주장한 두 축이 모두 ok 였지만 점수가
+        0.4 였다 — 수주잔고 배수가 10년 0분위였기 때문이다. 반증되지 않은 것과
+        지금 작동 중인 것은 다르다. 그래서 세기까지 함께 본다.
+        """
+        if not self.claimed:
+            return "미선언"
+        live = [s for s in self.claimed_axes if s.status in ("ok", "unconfirmed")]
+        if not live:
+            return "미성립"
+        if any(s.status == "rejected" for s in self.claimed_axes):
+            return "일부기각"
+
+        sc = self.catalyst_score or 0.0
+        if sc < 25:
+            # 논지가 틀렸다는 게 아니라, 지금 그 힘이 작동한다는 증거가 없다는 뜻
+            return "성립하나 신호없음"
+        if len(live) < len(self.claimed_axes):
+            return "일부확인불가"
+        return "성립" if all(s.status == "ok" for s in live) else "미확증"
 
     @property
     def unpriced_score(self) -> float | None:
@@ -46,7 +91,7 @@ class ThemeResult:
 
     @property
     def top_axes(self) -> list[Signal]:
-        live = [s for s in self.catalyst if s.effective is not None]
+        live = [s for s in self.claimed_axes if s.effective is not None]
         return sorted(live, key=lambda s: -(s.effective or 0))[:2]
 
     @property
@@ -268,9 +313,16 @@ def price_stats(tickers: list[str], prices: dict, bench: list) -> dict:
 
 def evaluate_theme(theme: dict, tmap: dict, bench: list, series_cache: dict) -> ThemeResult:
     tickers = [t.upper() for t in theme.get("tickers", [])]
+    claimed, unknown = axes.resolve_catalysts(theme.get("catalysts") or [])
     res = ThemeResult(name=theme["name"], thesis=theme.get("thesis", ""),
                       tickers=tickers, lead_time=theme.get("lead_time", ""),
-                      customers=theme.get("customers") or {})
+                      customers=theme.get("customers") or {},
+                      claimed=claimed, unknown_catalysts=unknown)
+    if unknown:
+        res.notes.append(f"알 수 없는 촉매 이름: {', '.join(unknown)}")
+    if not claimed:
+        res.notes.append("촉매 미선언 — themes.yaml 에 catalysts 를 적으면 "
+                         "'이 논지가 데이터로 성립하는가'를 판정할 수 있다")
 
     def fred(sid):
         if sid not in series_cache:

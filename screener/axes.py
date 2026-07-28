@@ -18,6 +18,34 @@ from .stats import best_lag, freq_periods, last, pct_rank, scale, slope, yoy
 
 FRED_URL = "https://fred.stlouisfed.org/series/{}"
 
+# 테마가 themes.yaml 에서 선언하는 촉매 이름 -> 축 키
+# 테마는 '왜 오르는지'를 먼저 말해야 하고, 점수는 그 주장 안에서만 나온다.
+# 선언하지 않은 축이 우연히 높다고 순위를 만들면 그건 연관성이지 논리가 아니다.
+CATALYST_KEYS = {
+    "낙수": "A1", "전방": "A1", "derived": "A1",
+    "공급": "A2", "shortage": "A2", "공급부족": "A2",
+    "신기술": "A3", "기술": "A3",
+    "교체": "A4", "교체주기": "A4",
+    "정책": "A5", "규제": "A5", "예산": "A5",
+    "캐펙스": "A6", "capex": "A6",
+    "스프레드": "A7", "마진": "A7",
+    "재고": "A8",
+    "병목": "A9",
+    "대체": "A10", "점유율": "A10",
+}
+
+
+def resolve_catalysts(names: list[str]) -> tuple[set[str], list[str]]:
+    """선언된 촉매 이름을 축 키로 바꾼다. 못 알아본 이름은 따로 돌려준다."""
+    keys, unknown = set(), []
+    for n in names or []:
+        k = CATALYST_KEYS.get(str(n).strip().lower()) or CATALYST_KEYS.get(str(n).strip())
+        if k:
+            keys.add(k)
+        else:
+            unknown.append(str(n))
+    return keys, unknown
+
 
 @dataclass
 class Signal:
@@ -203,7 +231,12 @@ def a3_newtech(theme: dict, group: dict, fts) -> Signal:
         pre["e"] |= set(p["entities"])
 
     nb, pb = len(cur["e"]), len(pre["e"])
-    if cur["h"] + pre["h"] < 10:
+    # 표본이 작으면 확산이 아니라 잡음이다. 5개사가 6개사가 된 걸 '+20% 확산'으로
+    # 읽으면 노이즈에 점수를 준다(방산 '탄약 생산' 4→5개사가 56점을 받던 문제).
+    if nb < 8:
+        return _nodata(*K, f"표본 부족 — 최근 12개월 언급 기업 {nb}개사(최소 8). "
+                           f"확산을 논할 모수가 안 됨. 키워드를 더 일반적인 표현으로 바꿀 것")
+    if cur["h"] + pre["h"] < 20:
         return _nodata(*K, f"언급량 부족 (최근12M {cur['h']}건 / 직전 {pre['h']}건) — 키워드 재검토")
 
     tot = sum(cur["sic"].values()) or 1
