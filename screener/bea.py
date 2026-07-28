@@ -136,12 +136,18 @@ def _num(v) -> float:
         return 0.0
 
 
-# 최종수요·부가가치 열은 '고객 산업'이 아니다. 개인소비지출·수출·재고증감 등은
-# 산업이 아니라 수요 항목이므로 고객 명단에서 빼야 한다.
+# 최종수요·부가가치 열은 '고객 산업'이 아니다. 산업이 아니라 수요 항목이므로
+# 고객 명단에서 빼야 한다.
 _NON_INDUSTRY = re.compile(
     r"total|value added|compensation|surplus|taxes|import|export|"
-    r"personal consumption|government|gross|inventor|residual|scrap|used",
+    r"personal consumption|government|gross|inventor|residual|scrap|used|"
+    r"fixed investment|change in private",
     re.I)
+
+# BEA 최종수요 코드는 F 로 시작한다(F02E 설비투자, F02R 주택투자, F010 소비 …).
+# 이름 필터만으로는 못 거른다 — 실제로 F02E 가 한 테마에서 60% 를 차지하며
+# 1위 '고객'으로 올라왔다. 코드로 잘라낸다.
+_FINAL_DEMAND = re.compile(r"^F\d", re.I)
 
 
 def downstream_of(data: list[dict], row_code: str, top_n: int = 8) -> list[tuple[str, str, float]]:
@@ -155,7 +161,9 @@ def downstream_of(data: list[dict], row_code: str, top_n: int = 8) -> list[tuple
         if str(d.get("RowCode", "")).strip() != row_code:
             continue
         col, name = str(d.get("ColCode", "")).strip(), str(d.get("ColDescr", "")).strip()
-        if not col or _NON_INDUSTRY.search(name) or _NON_INDUSTRY.search(col):
+        if not col or _FINAL_DEMAND.match(col):
+            continue
+        if _NON_INDUSTRY.search(name) or _NON_INDUSTRY.search(col):
             continue
         buckets[(col, name)] += _num(d.get("DataValue"))
 
@@ -207,13 +215,17 @@ def match_row_code(codes: list[tuple[str, str]], naics: str) -> tuple[str, str] 
     """
     if not naics:
         return None
+    # ① 정확 일치
     for c, n in codes:
         if c == naics:
             return c, n
+    # ② BEA 코드가 NAICS 로 시작 — 3364 -> 3364OT
+    #    (방향을 반대로 짰다가 NAICS 3364 항공기가 BEA 3361MV 자동차로 매칭됐다)
     for c, n in codes:
-        if naics.startswith(c) and len(c) >= 3:
+        if c.startswith(naics):
             return c, n
-    for c, n in codes:
-        if c.startswith(naics[:3]) and len(naics) >= 3:
+    # ③ NAICS 가 BEA 코드로 시작 — 3344 -> 334
+    for c, n in sorted(codes, key=lambda x: -len(x[0])):
+        if len(c) >= 3 and naics.startswith(c):
             return c, n
     return None

@@ -32,15 +32,41 @@ OUT.mkdir(exist_ok=True)
 # BEA 산업코드 -> 그 산업의 실질 활동을 나타내는 FRED 시리즈.
 # ①낙수 축은 '명목 금액'이 아니라 '실질 물량'을 봐야 한다 — 물가 상승을 성장으로
 # 오독하지 않기 위해서다. 그래서 산업생산 지수를 쓴다.
+#
+# 여기에 아무 시리즈나 넣으면 안 된다. 첫 출력에서 건설(23)을 IPCONGD 로,
+# 도매(42)를 IPBUSEQ 로 매핑해 뒀는데 각각 '소비재 생산'과 '기업설비 생산'
+# 지수여서 해당 산업과 무관했다. 확실한 것만 남기고 나머지는 비워둔다 —
+# 틀린 지표를 제안하는 것보다 제안하지 않는 게 낫다.
 BEA_TO_FRED = {
-    "221": "IPUTIL", "22": "IPUTIL",
-    "324": "IPG324S", "325": "IPG325S", "326": "IPG326S",
-    "331": "IPG331S", "332": "IPG332S", "333": "IPG333S",
-    "334": "IPG334S", "3344": "IPG3344S", "3341": "IPG3341S",
-    "335": "IPG335S", "336": "IPG336S", "3361MV": "IPG3361T3S",
-    "3364OT": "IPG3364T9S", "3364": "IPG3364T9S",
-    "211": "IPMINE", "212": "IPMINE", "213": "IPMINE",
-    "23": "IPCONGD", "42": "IPBUSEQ",
+    "22": "IPUTIL", "221": "IPUTIL",            # 유틸리티
+    "211": "IPMINE", "212": "IPMINE", "213": "IPMINE",   # 광업
+    "324": "IPG324S",       # 석유·석탄
+    "325": "IPG325S",       # 화학
+    "326": "IPG326S",       # 플라스틱·고무
+    "331": "IPG331S",       # 1차금속
+    "332": "IPG332S",       # 금속가공
+    "333": "IPG333S",       # 기계
+    "334": "IPG334S",       # 컴퓨터·전자
+    "3344": "IPG3344S",     # 반도체
+    "3341": "IPG3341S",     # 컴퓨터
+    "335": "IPG335S",       # 전기장비
+    "336": "IPG336S",       # 운송장비
+    "3361MV": "IPG3361T3S",  # 자동차
+    "3364OT": "IPG3364T9S",  # 항공·기타운송
+}
+
+# 산업생산 지수가 없는 서비스·건설 부문. 고객으로 잡히더라도 ①낙수 축의
+# 실질 활동 지표로는 쓸 수 없으므로, 제안하지 않고 사유를 표시한다.
+NO_REAL_INDEX = {
+    "23": "건설 — 실질 산출 지수 없음(건설지출은 명목)",
+    "42": "도매 — 산업생산 지수 없음",
+    "44RT": "소매 — 산업생산 지수 없음",
+    "481": "항공운송 — 산업생산 지수 없음",
+    "484": "트럭운송 — 산업생산 지수 없음",
+    "513": "방송·통신 — 산업생산 지수 없음",
+    "55": "지주회사 — 산업 아님",
+    "561": "사업지원 서비스 — 산업생산 지수 없음",
+    "5412OP": "전문서비스 — 산업생산 지수 없음",
 }
 
 
@@ -145,23 +171,31 @@ def main() -> int:
 
         lines += [f"공급 산업: `{rc}` {rname}  (NAICS {naics} ← `{src}`)", "",
                   "| 고객 산업 | 코드 | 비중 | FRED 지표 |", "|---|---|---|---|"]
-        best_series = None
+        best_series, best_share, best_name = None, 0.0, ""
         for c, n, share in tops:
             fr = BEA_TO_FRED.get(c, "")
+            note = "" if fr else NO_REAL_INDEX.get(c, "")
             if fr and not best_series:
-                best_series = fr
-            lines.append(f"| {n[:52]} | `{c}` | {share * 100:.1f}% | {fr or '—'} |")
+                best_series, best_share, best_name = fr, share, n
+            lines.append(f"| {n[:52]} | `{c}` | {share * 100:.1f}% | "
+                         f"{fr or ('—  ' + note if note else '—')} |")
         lines.append("")
 
         cur = (th.get("customers") or {}).get("series")
-        if best_series:
-            mark = "그대로" if cur == best_series else f"{cur or '없음'} → {best_series}"
-            lines += [f"제안 `customers.series`: **{best_series}** ({mark})", ""]
-            updates[name] = {"series": best_series,
-                             "top": [(c, n, share) for c, n, share in tops[:3]]}
+        if not best_series:
+            lines += ["상위 고객이 전부 실질 산출 지수가 없는 부문이다 — "
+                      "①낙수 축은 이 테마에서 자동 지정할 수 없다.", ""]
+        elif best_share < 0.10:
+            # 1위 매핑 가능 고객이 10% 도 안 되면 그 지표로 전방수요를 대표할 수 없다
+            lines += [f"제안 없음 — 지표화 가능한 최상위 고객 `{best_name[:40]}` 이 "
+                      f"{best_share * 100:.1f}% 에 불과해 전방수요를 대표하지 못한다. "
+                      f"현재 값 `{cur or '없음'}` 유지 권장.", ""]
         else:
-            lines += ["상위 고객 산업이 FRED 지표에 매핑되지 않음 — "
-                      "`BEA_TO_FRED` 에 항목 추가 필요", ""]
+            mark = "그대로" if cur == best_series else f"{cur or '없음'} → {best_series}"
+            lines += [f"제안 `customers.series`: **{best_series}** "
+                      f"(비중 {best_share * 100:.1f}%, {mark})", ""]
+            updates[name] = {"series": best_series, "share": best_share,
+                             "top": [(c, n, share) for c, n, share in tops[:3]]}
 
     # --- 4) 한계 명시
     lines += ["## 4. 이 리포트가 못 하는 것", "",
