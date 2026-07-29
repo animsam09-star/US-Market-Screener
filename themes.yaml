@@ -212,3 +212,157 @@ themes:
       shipments: ADEFVS
       new_orders: ADEFNO
       unfilled_orders: UDEFUO
+
+  # ===========================================================================
+  #  아래는 확장 테마. 각 지표 ID 는 실제 조회로 존재를 확인했다.
+  # ===========================================================================
+
+  - name: 화학·석유화학
+    thesis: 나프타·천연가스 원가는 내렸는데 판가는 늦게 따라 내린다 — 스프레드 확대 구간
+    catalysts: [스프레드, 재고]
+    lead_time: 3~9M
+    tickers: [LYB, DOW, EMN, CE, HUN, WLK, ASH]
+    customers:
+      tickers: [PG, KMB, F, GM, WHR, SHW]
+      series: IPG326S          # 플라스틱·고무 — 화학의 최대 전방
+    edgar_keywords: ["ethylene cracker", "naphtha feedstock", "chemical capacity"]
+    fedreg_terms: ["chemical manufacturing emissions"]
+    fedreg_agencies: [environmental-protection-agency]
+    fred:
+      industrial_production: IPG325S
+      capacity_utilization: CAPUTLG325S
+      capacity_index: CAPG325S
+      ppi_output: PCU325211325211    # 플라스틱 원료
+      ppi_input: WPU0561             # 원유
+      inventories: A25STI            # 비내구재라 신규수주 없음 → ⑨ 자동 비활성
+      shipments: A25SVS
+      trade_naics: "325"
+
+  - name: 비료·농화학
+    thesis: 천연가스 원가 하락 + 곡물 재배면적 유지 — 질소비료 스프레드가 벌어진다
+    catalysts: [스프레드, 공급]
+    lead_time: 3~9M
+    tickers: [CF, MOS, NTR, IPI, UAN]
+    customers:
+      tickers: [ADM, BG, ANDE]
+      series: IPG311A2S       # 식품 가공 — 곡물 수요의 대용
+    edgar_keywords: ["nitrogen fertilizer", "ammonia capacity", "phosphate rock"]
+    fedreg_terms: ["fertilizer", "nutrient management"]
+    fedreg_agencies: [environmental-protection-agency, agriculture-department]
+    fred:
+      industrial_production: IPG325S
+      capacity_utilization: CAPUTLG325S
+      capacity_index: CAPG325S
+      ppi_output: PCU325311325311    # 질소비료
+      ppi_input: WPU0531             # 연료
+      inventories: A25STI
+      shipments: A25SVS
+
+  - name: 주택건설
+    # 도구가 ⑧축을 기각했다: "재고는 낮지만 건축허가 -1.8%".
+    # 원래 논지(신축이 수요를 흡수)는 데이터로 지지되지 않는다. 논지를 고쳤다.
+    thesis: 착공은 눌려 있고 목재·용지 공급도 제약 — 수요가 돌면 즉시 병목
+    catalysts: [재고, 공급]
+    lead_time: 6~18M
+    tickers: [DHI, LEN, PHM, NVR, TOL, KBH, MTH]
+    customers: {}              # 최종 고객이 가계라 상장 고객군이 없다
+    edgar_keywords: ["housing affordability", "spec inventory", "buydown incentive"]
+    fedreg_terms: ["mortgage", "housing finance"]
+    fedreg_agencies: [housing-and-urban-development-department]
+    fred:
+      industrial_production: IPG321S      # 목재 — 주택 착공의 후방
+      capacity_utilization: CAPUTLG321S
+      capacity_index: CAPG321S
+      inventory_ratio: MSACSR             # 신규주택 재고(개월분) — 이미 비율
+      new_orders: PERMIT                  # 건축허가 = 선행 수요
+
+  - name: 제지·포장
+    # 도구가 ②축을 '사양산업'으로 기각했다(생산능력·생산 동시 감소).
+    # 공급 축소 논지는 성립하지 않는다. 남는 것은 판가-원가 스프레드다.
+    thesis: 구조적 축소 산업이지만 펄프 원가 하락분이 판가에 늦게 반영된다
+    catalysts: [스프레드, 재고]
+    lead_time: 6~18M
+    tickers: [IP, PKG, GPK, SLGN, SON]
+    customers:
+      tickers: [AMZN, WMT, TGT, PG, KO]
+      series: IPG311A2S
+    edgar_keywords: ["containerboard", "mill closure", "corrugated demand"]
+    fedreg_terms: ["pulp and paper emissions"]
+    fedreg_agencies: [environmental-protection-agency]
+    fred:
+      industrial_production: IPG322S
+      capacity_utilization: CAPUTLG322S
+      capacity_index: CAPG322S
+      ppi_output: PCU322322
+      ppi_input: WPU0613
+      inventories: A22STI
+      shipments: A22SVS
+
+  - name: 트럭·물류
+    # 트럭운송은 제조업이 아니라 가동률 지수가 없다. 공급 이탈은 실재하지만
+    # 무료 데이터로 측정할 수 없어, 측정 가능한 축만 선언한다.
+    thesis: 화물 침체 3년차 — 산업생산이 돌면 재입고 수요가 운임에 먼저 나타난다
+    catalysts: [재고, 낙수]
+    lead_time: 3~9M
+    tickers: [ODFL, SAIA, XPO, KNX, WERN, JBHT, CHRW]
+    customers:
+      tickers: [WMT, TGT, HD, LOW, AMZN]
+      series: INDPRO           # 화물 수요 = 산업생산 전반
+    edgar_keywords: ["freight recession", "capacity exit", "spot rate"]
+    fedreg_terms: ["motor carrier safety", "hours of service"]
+    fedreg_agencies: [federal-motor-carrier-safety-administration]
+    fred:
+      industrial_production: TRUCKD11      # 트럭 톤수 지수
+      inventories: A26STI                  # 플라스틱·고무(소비재 대용)
+      shipments: A26SVS
+
+  - name: 건설·농기계
+    thesis: 인프라 예산 집행 + 장비 노후화. 교체 수요는 예측이 아니라 산수
+    catalysts: [교체, 병목]
+    lead_time: 12~24M
+    tickers: [CAT, DE, TEX, AGCO, OSK, MTW]
+    customers:
+      tickers: [PWR, MTZ, GVA, ACM, J]
+      series: IPMINE           # 광업 — 건설기계의 큰 고객
+    edgar_keywords: ["fleet age", "used equipment values", "dealer inventory"]
+    fedreg_terms: ["infrastructure investment"]
+    fedreg_agencies: [transportation-department]
+    fred:
+      industrial_production: IPG3331S
+      capacity_utilization: CAPUTLG333S
+      capacity_index: CAPG333S
+      inventories: A33STI
+      shipments: A33SVS
+      new_orders: A33SNO
+      unfilled_orders: U33SUO
+
+  - name: 의료기기
+    thesis: 코로나로 밀린 선택수술이 재개되고 병원 자본지출이 회복된다
+    catalysts: [교체, 신기술]
+    lead_time: 6~18M
+    tickers: [SYK, BSX, ZBH, MDT, EW, ISRG, BAX]
+    customers:
+      tickers: [HCA, THC, UHS, CYH]
+      series: IPG339S
+    edgar_keywords: ["pulsed field ablation", "robotic surgery", "procedure volume"]
+    fedreg_terms: ["medical device", "Medicare payment"]
+    fedreg_agencies: [food-and-drug-administration, centers-for-medicare-medicaid-services]
+    fred:
+      industrial_production: IPG339S
+      capacity_utilization: CAPUTLG339S
+      capacity_index: CAPG339S
+
+  - name: 유전서비스·시추
+    thesis: 유가는 버티는데 시추 활동은 바닥 — 셰일 재고정(inventory) 소진으로 재가동 필요
+    catalysts: [공급, 낙수]
+    lead_time: 6~18M
+    tickers: [SLB, HAL, BKR, WFRD, NOV, CHX]
+    customers:
+      tickers: [XOM, CVX, COP, EOG, DVN, FANG]
+      series: IPMINE
+    edgar_keywords: ["rig count", "completion activity", "drilled uncompleted"]
+    fedreg_terms: ["oil and gas leasing", "methane emissions"]
+    fedreg_agencies: [interior-department, environmental-protection-agency]
+    fred:
+      industrial_production: IPN213111N     # 석유·가스 시추
+      capacity_utilization: CAPUTLG21S

@@ -559,13 +559,24 @@ def a8_inventory(cfg: dict, fred) -> Signal:
     # 전 제조업 총계로 폴백하면 모든 테마가 같은 점수를 받아 스크리너가 무의미해진다.
     # 산업별 시리즈가 없으면 축을 비활성한다 — 틀린 기본값보다 '없음'이 낫다.
     inv_id, sh_id = cfg.get("inventories"), cfg.get("shipments")
-    if not (inv_id and sh_id):
+    # 이미 비율로 나오는 지표가 있는 산업도 있다(주택 MSACSR = 재고 개월수).
+    # 그럴 땐 나눗셈 없이 그대로 쓴다. 이건 테마가 명시적으로 고른 것이지,
+    # 예전처럼 미지정 시 전 제조업 총계로 몰래 폴백하는 것과 다르다.
+    ratio_id = cfg.get("inventory_ratio")
+    if ratio_id:
+        try:
+            ratio = fred(ratio_id)
+        except Exception as e:
+            return _nodata(*K, f"재고율 조회 실패: {e}")
+        inv_id = sh_id = ratio_id
+    elif inv_id and sh_id:
+        try:
+            ratio = _ratio(fred(inv_id), fred(sh_id))
+        except Exception as e:
+            return _nodata(*K, f"재고/출하 조회 실패: {e}")
+    else:
         return _nodata(*K, "산업별 재고·출하 시리즈 미지정 — 전 제조업 총계 폴백은 "
                            "모든 테마에 같은 점수를 주므로 사용하지 않는다")
-    try:
-        ratio = _ratio(fred(inv_id), fred(sh_id))
-    except Exception as e:
-        return _nodata(*K, f"재고/출하 조회 실패: {e}")
     if len(ratio) < 36:
         return _nodata(*K, "재고/출하 이력 부족")
 
