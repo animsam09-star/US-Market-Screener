@@ -22,6 +22,7 @@
 #    inventories/shipments  재고·출하 (비율은 계산) ⑧
 #    new_orders             신규수주              ⑧⑨확증
 #    unfilled_orders        수주잔고              ⑨
+#    trade_naics            NAICS 코드            ⑩ 수입침투율(Census 키 필요)
 #
 #  ⑧⑨는 산업별 M3 시리즈를 지정해야 켜진다. 전 제조업 총계로 폴백하면 모든
 #  테마가 같은 점수를 받아 순위가 무의미해지므로, 미지정이면 축을 끈다.
@@ -60,6 +61,7 @@ themes:
       shipments: A35SVS
       new_orders: A35SNO
       unfilled_orders: U35SUO
+      trade_naics: "335"    # ⑩ 수입침투율 — 변압기 수입 의존이 국내 증설로 바뀌는지
 
   - name: 반도체 첨단패키징·후공정
     thesis: 미세화 한계로 가치가 전공정에서 후공정/패키징으로 이동
@@ -82,6 +84,7 @@ themes:
       shipments: A34SVS
       new_orders: A34SNO
       unfilled_orders: U34SUO
+      trade_naics: "334"    # ⑩ 수입침투율 — 후공정은 아시아 비중이 높다 — 국내 회귀 여부
 
   - name: 항공 애프터마켓·MRO
     thesis: 기재 노후화 + 신규 인도 지연으로 기존 기체를 더 오래 굴려야 함. 정비 수요는 산수
@@ -185,6 +188,7 @@ themes:
       shipments: A31SVS
       new_orders: A31SNO
       unfilled_orders: U31SUO
+      trade_naics: "331"    # ⑩ 수입침투율 — 관세·리쇼어링이 실제로 수입을 밀어냈는지
 
   - name: 방산·탄약
     thesis: 재고 소진분 보충 + 각국 GDP 대비 국방비 상향. 예산은 이미 확정된 다년 계약

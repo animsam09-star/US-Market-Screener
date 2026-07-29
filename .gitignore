@@ -22,3 +22,9 @@ _def*.py
 _civ.py
 _m3.py
 _inv.py
+_catalog*.py
+_ir.py
+_eia.py
+_srcprobe.py
+census_key.txt
+data_gov_key.txt

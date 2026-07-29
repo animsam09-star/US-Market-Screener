@@ -428,6 +428,65 @@ def f18_eia_response_shape():
           str(_pick_value({"period": "x", "price-units": "3"})))
 
 
+# ---------------------------------------------------------------- F19
+def f19_key_name_aliases():
+    """시크릿 이름은 사람이 붙인다.
+
+    사고 방지: 내가 안내한 이름(CENSUS_API_KEY)과 실제 등록한 이름(CENSUS_API)이
+    달랐다. 이름이 안 맞아 키를 못 찾는 건 조용한 실패 중 가장 허무한 종류다.
+    """
+    import os
+
+    from screener.keys import census_key, data_gov_key
+
+    saved = {k: os.environ.get(k) for k in
+             ("CENSUS_API", "CENSUS_API_KEY", "DATA_GOV_API", "DATA_GOV_API_KEY")}
+    try:
+        for k in saved:
+            os.environ.pop(k, None)
+        os.environ["CENSUS_API"] = "AAAAAAAAAAAAAAAAAAAAAAAA"
+        check("F19 접미사 없는 이름도 인식", census_key() == "A" * 24, str(census_key()))
+        os.environ.pop("CENSUS_API")
+        os.environ["CENSUS_API_KEY"] = "BBBBBBBBBBBBBBBBBBBBBBBB"
+        check("F19 접미사 있는 이름도 인식", census_key() == "B" * 24, str(census_key()))
+        os.environ.pop("CENSUS_API_KEY")
+        os.environ["DATA_GOV_API"] = "CCCCCCCCCCCCCCCCCCCCCCCC"
+        check("F19 data.gov 도 동일", data_gov_key() == "C" * 24, str(data_gov_key()))
+    finally:
+        for k, v in saved.items():
+            os.environ.pop(k, None)
+            if v is not None:
+                os.environ[k] = v
+
+
+# ---------------------------------------------------------------- F20
+def f20_substitution_axis():
+    """⑩ 대체 축 — 침투율이 내려가도 시장 자체가 줄면 의미가 없다."""
+    from datetime import date as _d
+
+    from screener.axes import a10_substitution
+
+    # 국내 출하가 함께 줄어드는 경우 = 시장 축소로 기각돼야 한다
+    dom = [(_d(2020 + i // 12, i % 12 + 1, 1), 100.0 - i * 0.5) for i in range(72)]
+    fred = lambda k: dom
+
+    import screener.axes as A
+    import screener.census as C
+    orig = C.trade_monthly
+    try:
+        # 수입은 더 빠르게 줄어 침투율이 하락하는 상황
+        C.trade_monthly = lambda n, f="imports", years=6: [
+            (d, 40.0 - i * 0.5) for i, (d, _) in enumerate(dom)]
+        s = a10_substitution({"trade_naics": "331", "shipments": "SHIP"}, fred)
+        check("F20 시장 축소면 기각", s.status == "rejected", f"{s.status} {s.reason[:40]}")
+        check("F20 기각 사유 명시", "시장 축소" in s.reason, s.reason[:40])
+    finally:
+        C.trade_monthly = orig
+
+    s2 = a10_substitution({"shipments": "SHIP"}, fred)
+    check("F20 NAICS 미지정이면 nodata", s2.status == "nodata", s2.status)
+
+
 def main() -> int:
     for fn in [f1_ytd_differencing, f2_no_economy_wide_fallback, f3_bea_result_shapes,
                f4_bea_final_demand_excluded, f5_naics_matching_direction,
@@ -436,7 +495,8 @@ def main() -> int:
                f11_vendored_ticker_fallback, f12_snapshot_fallback,
                f13_self_reference_excluded, f14_evidence_matches_claim,
                f15_notfound_not_host_failure, f16_company_names,
-               f17_source_prefix_routing, f18_eia_response_shape]:
+               f17_source_prefix_routing, f18_eia_response_shape,
+               f19_key_name_aliases, f20_substitution_axis]:
         try:
             fn()
         except Exception as e:

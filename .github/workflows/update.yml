@@ -123,6 +123,12 @@ jobs:
         env:
           BEA_API_KEY: ${{ secrets.BEA_API_KEY }}
           EIA_API_KEY: ${{ secrets.EIA_API_KEY }}
+          # 시크릿 이름은 사람이 붙인다. keys.py 가 _KEY 접미사 유무를 함께 보므로
+          # 아래 두 이름 중 실제로 등록된 쪽이 잡힌다.
+          CENSUS_API: ${{ secrets.CENSUS_API }}
+          CENSUS_API_KEY: ${{ secrets.CENSUS_API_KEY }}
+          DATA_GOV_API: ${{ secrets.DATA_GOV_API }}
+          DATA_GOV_API_KEY: ${{ secrets.DATA_GOV_API_KEY }}
           # SEC 는 연락처가 담긴 User-Agent 를 요구한다. 없으면 403.
           SCREENER_UA: ${{ secrets.SCREENER_UA }}
         run: python run.py --no-open

@@ -418,7 +418,7 @@ def evaluate_theme(theme: dict, tmap: dict, bench: list, series_cache: dict) -> 
         axes.a7_spread(fc, group, fred),
         axes.a8_inventory(fc, fred),
         axes.a9_bottleneck(fc, fred),
-        axes.a10_substitution(),
+        axes.a10_substitution(fc, fred),
     ]
     res.unpriced = [u1_fundamental_inflection(group), u2_valuation_gap(group),
                     u3_price_unreacted(px), u4_drawdown(px)]

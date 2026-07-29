@@ -610,7 +610,70 @@ def a9_bottleneck(cfg: dict, fred) -> Signal:
 
 # ---------------------------------------------------------------- ⑩ 대체
 
-def a10_substitution() -> Signal:
-    return _nodata("A10", "⑩ 대체·점유율 이전",
-                   "v1 미구현 — 세부 품목별 출하 믹스가 필요. "
-                   "Census Trade(무료 키) 기반으로 v2 예정")
+def a10_substitution(cfg: dict, fred) -> Signal:
+    """산업 전체가 안 커도 한쪽이 다른 쪽을 먹으면 그 안에서 승자가 난다.
+
+    가장 측정 가능한 형태가 **수입 대 국내 생산**이다. 국내 생산자 관점이므로
+    침투율이 **내려갈 때** 유리하다(리쇼어링·관세가 먹히는 중).
+    """
+    K = ("A10", "⑩ 대체(수입침투율)")
+    naics = cfg.get("trade_naics")
+    sh_id = cfg.get("shipments")
+    if not naics:
+        return _nodata(*K, "trade_naics 미지정 — themes.yaml 에 NAICS 를 적으면 "
+                           "Census 수입통계로 국내 생산 대체 여부를 본다")
+    if not sh_id:
+        return _nodata(*K, "국내 출하 시리즈(shipments) 미지정 — 침투율의 분모가 없다")
+
+    from .census import CensusError, trade_monthly
+    try:
+        imp = trade_monthly(naics, "imports")
+    except CensusError as e:
+        return _nodata(*K, f"수입 통계 조회 실패: {e}")
+    try:
+        dom = fred(sh_id)
+    except Exception as e:
+        return _nodata(*K, f"국내 출하 조회 실패: {e}")
+
+    # 침투율 = 수입 / (국내출하 + 수입). 같은 달끼리만 짝짓는다.
+    dm = {(d.year, d.month): v for d, v in dom}
+    pen: list[tuple[date, float]] = []
+    for d, v in imp:
+        base = dm.get((d.year, d.month))
+        if base and (base + v) > 0:
+            pen.append((d, 100.0 * v / (base + v)))
+    if len(pen) < 24:
+        return _nodata(*K, f"공통 이력 부족({len(pen)}개월) — 수입과 출하의 단위·주기 확인 필요")
+
+    cur = pen[-1][1]
+    rank = pct_rank(cur, [v for _, v in pen])
+    tr = slope(pen, 12)          # 최근 1년 추세(%p/월)
+    if rank is None or tr is None:
+        return _nodata(*K, "침투율 분위·추세 계산 불가")
+
+    detail = (f"수입침투율 {cur:.1f}% (자체 이력 {rank:.0f}분위), "
+              f"최근 12개월 추세 {tr * 12:+.1f}%p/년")
+    # 침투율이 내려갈수록 국내 생산자에 유리 → 점수는 반대 방향
+    sc = scale(-tr * 12, -3.0, 3.0) or 0.0
+
+    # 기각: 침투율이 내려가도 국내 출하까지 줄면 시장 자체가 쪼그라든 것이다
+    dg = None
+    try:
+        dg = yoy(dom, freq_periods(dom))[-1][1]
+    except Exception:
+        pass
+    if dg is not None:
+        detail += f", 국내 출하 YoY {dg:+.1f}%"
+        if tr < 0 and dg < -2:
+            return _reject(*K, f"시장 축소 — 수입침투율은 내려가지만 국내 출하도 "
+                               f"{dg:+.1f}%. 국내가 수입을 되찾은 게 아니라 "
+                               "시장 자체가 줄어든 것", detail)
+    else:
+        return Signal(*K, sc, "unconfirmed", detail,
+                      "확증 실패: 국내 출하 증감 확인 불가")
+
+    if tr >= 0:
+        return Signal(*K, sc, "unconfirmed", detail,
+                      f"수입이 오히려 침투 중({tr * 12:+.1f}%p/년) — "
+                      "국내 생산자에게는 역풍")
+    return Signal(*K, sc, "ok", detail)
