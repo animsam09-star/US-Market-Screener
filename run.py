@@ -28,6 +28,44 @@ OUT = ROOT / "out"
 OUT.mkdir(exist_ok=True)
 
 
+
+# Cloudflare Pages 앞단에서 비밀번호를 확인하는 코드.
+# Cloudflare Access 는 본인 소유 도메인(zone)에만 걸 수 있어 *.pages.dev 는
+# 보호하지 못한다. 대신 Pages 의 _worker.js(고급 모드)로 직접 막는다 —
+# 도메인도 유료 플랜도 필요 없다.
+# 비밀번호는 코드에 넣지 않고 Pages 환경변수(SCREENER_PASSWORD)에서 읽는다.
+# 값이 없으면 통과시킨다(로컬 열람·설정 전 상태에서 막히지 않도록).
+_WORKER_JS = """\
+export default {
+  async fetch(request, env) {
+    const pw = env.SCREENER_PASSWORD;
+    if (pw) {
+      const got = request.headers.get("Authorization") || "";
+      const want = "Basic " + btoa("screener:" + pw);
+      let ok = got.length === want.length;
+      for (let i = 0; i < want.length; i++) {
+        if (got.charCodeAt(i) !== want.charCodeAt(i)) ok = false;
+      }
+      if (!ok) {
+        return new Response("인증이 필요합니다.", {
+          status: 401,
+          headers: {
+            "WWW-Authenticate": 'Basic realm="screener", charset="UTF-8"',
+            "Content-Type": "text/plain; charset=utf-8",
+          },
+        });
+      }
+    }
+    return env.ASSETS.fetch(request);
+  },
+};
+"""
+
+
+def _install_gate() -> None:
+    (OUT / "_worker.js").write_text(_WORKER_JS, encoding="utf-8")
+
+
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--config", default=str(ROOT / "themes.yaml"))
@@ -85,8 +123,12 @@ def main() -> int:
         print("결과 없음")
         return 1
 
+    html = build_html(results, benchmark=bench_tkr)
     out = OUT / "screener.html"
-    out.write_text(build_html(results, benchmark=bench_tkr), encoding="utf-8")
+    out.write_text(html, encoding="utf-8")
+    # 배포 시 루트(/)로 열려야 한다. index.html 이 없으면 404 가 난다.
+    (OUT / "index.html").write_text(html, encoding="utf-8")
+    _install_gate()
     print(f"\n완료 ({time.time() - t0:.0f}초) → {out}")
 
     if not args.no_open:

@@ -41,6 +41,7 @@ jobs:
     env:
       CF_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
       CF_ACCOUNT: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+      SITE_PW: ${{ secrets.SCREENER_PASSWORD }}
     steps:
       - uses: actions/checkout@v4
 
@@ -151,6 +152,20 @@ jobs:
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           command: pages project create us-market-screener --production-branch=main
 
+      # 비밀번호를 Pages 환경변수로 올린다. 코드나 저장소에는 남지 않는다.
+      # 이게 있어야 _worker.js 가 인증을 요구한다 — 없으면 사이트는 공개다.
+      - name: 비밀번호 등록
+        id: cfsecret
+        if: env.CF_TOKEN != '' && env.CF_ACCOUNT != '' && env.SITE_PW != ''
+        continue-on-error: true
+        env:
+          SITE_PW: ${{ secrets.SCREENER_PASSWORD }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: |
+          printf '%s' "$SITE_PW" | npx --yes wrangler@3 pages secret put \
+            SCREENER_PASSWORD --project-name=us-market-screener
+
       - name: Cloudflare Pages 배포
         id: cfdeploy
         if: env.CF_TOKEN != '' && env.CF_ACCOUNT != ''
@@ -178,6 +193,13 @@ jobs:
               echo "- 시크릿: 설정됨"
               echo "- 프로젝트 준비: ${{ steps.cfproj.outcome }} (이미 있으면 failure 가 정상)"
               echo "- 배포: ${{ steps.cfdeploy.outcome }}"
+              if [ -z "$SITE_PW" ]; then
+                echo "- **비밀번호 미설정 — 사이트가 공개 상태입니다.**"
+                echo "  GitHub 시크릿 \`SCREENER_PASSWORD\` 를 추가하세요."
+              else
+                echo "- 비밀번호: 설정됨 (등록 ${{ steps.cfsecret.outcome }})"
+                echo "- 아이디는 \`screener\`, 비밀번호는 시크릿 값"
+              fi
               echo "- 주소: https://us-market-screener.pages.dev"
             fi
           } >> reports/run_status.md
