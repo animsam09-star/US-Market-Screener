@@ -309,13 +309,81 @@ def f13_self_reference_excluded():
           {c for c, _, _ in r} == {"3364OT", "481", "333"}, str([c for c, _, _ in r]))
 
 
+# ---------------------------------------------------------------- F14
+def f14_evidence_matches_claim():
+    """근거 링크가 주장과 다른 것을 가리키면 정반대로 읽힌다.
+
+    사고: 8번 축은 '재고/출하 비율'이 낮다고 판정하는데, 근거 링크는 '재고 금액
+    수준'을 가리켰다. 재고 금액은 물가와 성장 때문에 늘 사상 최고 근처라,
+    "재고 바닥이라면서 재고가 최고치"라는 정당한 반박을 받았다.
+    """
+    from datetime import date as _d
+
+    from screener.axes import a8_inventory, a9_bottleneck
+
+    inv = [( _d(2000 + i // 12, i % 12 + 1, 1), 100.0) for i in range(320)]
+    ship = list(inv)
+    no = [(d, 100.0 + i) for i, (d, _) in enumerate(ship)]
+    fred = lambda k: {"INV": inv, "SHIP": ship, "NO": no, "UO": inv}[k]
+
+    s8 = a8_inventory({"inventories": "INV", "shipments": "SHIP", "new_orders": "NO"}, fred)
+    check("F14 재고축 링크에 두 계열 모두", "INV,SHIP" in s8.evidence, s8.evidence)
+    check("F14 재고축 라벨이 비율임을 밝힘",
+          "원계열" in s8.evidence_label and "나눗셈" in s8.evidence_label, s8.evidence_label)
+    check("F14 raw 가 라벨에 안 밀림", isinstance(s8.raw, float), repr(s8.raw))
+
+    s9 = a9_bottleneck({"unfilled_orders": "UO", "shipments": "SHIP", "new_orders": "NO"}, fred)
+    check("F14 병목축 링크에 두 계열 모두", "UO,SHIP" in s9.evidence, s9.evidence)
+
+    # 위치인수로 evidence 뒤에 raw 를 넘기던 기존 호출이 깨지지 않아야 한다
+    from screener.axes import Signal
+    sig = Signal("A2", "x", 50, "ok", "d", "", "http://ev", 77.7)
+    check("F14 기존 위치인수 호출 유지", sig.raw == 77.7 and sig.evidence_label == "근거",
+          f"raw={sig.raw} label={sig.evidence_label}")
+
+
+# ---------------------------------------------------------------- F15
+def f15_notfound_not_host_failure():
+    """404 는 서버 장애가 아니다.
+
+    사고: 없는 FRED 시리즈를 몇 개 조회했더니 회로차단기가 FRED 전체를 죽은
+    것으로 판정해 그 뒤 모든 조회가 막혔다.
+    """
+    import screener.net as N
+
+    N._dead.clear()
+    N._fail_streak.clear()
+    for i in range(N._DEAD_AFTER + 2):
+        try:
+            N.fetch(f"https://fred.stlouisfed.org/nosuchpath{i}", ttl_hours=0, timeout=10)
+        except N.NotFound:
+            pass
+        except N.FetchError:
+            pass
+    check("F15 404 는 차단 판정에 안 셈", "fred.stlouisfed.org" not in N._dead,
+          str(N.host_status()))
+    N._dead.clear()
+    N._fail_streak.clear()
+
+
+# ---------------------------------------------------------------- F16
+def f16_company_names():
+    """티커만으로는 무슨 회사인지 알 수 없다."""
+    from screener.sources import ticker_names
+
+    n = ticker_names()
+    check("F16 회사명 사전 동봉", len(n) > 5000, f"{len(n)}건")
+    check("F16 값 확인", "Eaton" in (n.get("ETN") or ""), str(n.get("ETN")))
+
+
 def main() -> int:
     for fn in [f1_ytd_differencing, f2_no_economy_wide_fallback, f3_bea_result_shapes,
                f4_bea_final_demand_excluded, f5_naics_matching_direction,
                f6_circuit_breaker, f7_empty_secret_fallback, f8_catalyst_scoping,
                f9_inventory_covid_window, f10_newtech_sample_floor,
                f11_vendored_ticker_fallback, f12_snapshot_fallback,
-               f13_self_reference_excluded]:
+               f13_self_reference_excluded, f14_evidence_matches_claim,
+               f15_notfound_not_host_failure, f16_company_names]:
         try:
             fn()
         except Exception as e:

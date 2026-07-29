@@ -42,6 +42,10 @@ class FetchError(RuntimeError):
     pass
 
 
+class NotFound(FetchError):
+    """리소스가 없다(404). 호스트 장애가 아니므로 차단 판정에 세지 않는다."""
+
+
 def _throttle(host: str) -> None:
     gap = _MIN_INTERVAL.get(host, 0.0)
     if not gap:
@@ -115,7 +119,10 @@ def fetch(url: str, *, ttl_hours: float = 24.0, json_body: object | None = None,
             else:
                 r = requests.get(url, headers=HEADERS, timeout=timeout)
             if r.status_code == 404:
-                raise FetchError(f"404 {url}")
+                # 없는 리소스지 서버 장애가 아니다. 차단 판정에 세지 않는다 —
+                # 존재하지 않는 시리즈를 몇 개 조회했다고 FRED 전체를 죽은 것으로
+                # 판정하면 그 뒤 모든 조회가 막힌다(실제로 그랬다).
+                raise NotFound(f"404 {url}")
             if r.status_code in (403, 451):
                 # 정책 차단이지 일시 오류가 아니다. 재시도해도 안 열린다.
                 # SEC 는 데이터센터 IP(클라우드 러너)에 403 을 내는 일이 있다.
@@ -125,9 +132,11 @@ def fetch(url: str, *, ttl_hours: float = 24.0, json_body: object | None = None,
             cp.write_bytes(r.content)
             _fail_streak[host] = 0
             return r.content
+        except NotFound as e:
+            raise                      # 없는 리소스 — 재시도도 차단 판정도 무의미
         except FetchError as e:
             last = e
-            break                      # 403/404 는 재시도해도 소용없다
+            break                      # 403 은 재시도해도 소용없다
         except Exception as e:         # 네트워크 흔들림은 재시도
             last = e
             time.sleep(1.0 * (attempt + 1))

@@ -93,6 +93,20 @@ TAGS = {
 
 
 _VENDORED_TICKERS = Path(__file__).resolve().parent.parent / "data" / "ticker_cik.json"
+_VENDORED_NAMES = Path(__file__).resolve().parent.parent / "data" / "ticker_name.json"
+_names_cache: dict | None = None
+
+
+def ticker_names() -> dict[str, str]:
+    """티커 -> 회사명. 티커만 보고는 무슨 회사인지 알 수 없다."""
+    global _names_cache
+    if _names_cache is None:
+        if _VENDORED_NAMES.exists():
+            import json as _json
+            _names_cache = _json.loads(_VENDORED_NAMES.read_text(encoding="utf-8"))
+        else:
+            _names_cache = {}
+    return _names_cache
 
 
 def sec_ticker_map() -> dict[str, int]:

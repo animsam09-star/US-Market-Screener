@@ -6,6 +6,9 @@ import json
 from datetime import datetime
 
 from .signals import ThemeResult
+from .sources import ticker_names
+
+NAMES = ticker_names()
 
 # dataviz 레퍼런스 팔레트의 검증된 상위 3슬롯을 값 변경 없이 사용.
 # 리드타임 버킷이 정확히 3개라 all-pairs 게이트를 통과하는 범위 안에 있다.
@@ -84,8 +87,11 @@ def _signal_rows(sigs, *, show_status: bool = True) -> str:
         if show_status:
             txt, tcls = STATUS_TAG.get(status, ("", ""))
             tag = f'<span class="tag {tcls}">{_e(txt)}</span>'
-        ev = (f' <a class="ev" href="{_e(s.evidence)}" target="_blank" rel="noopener">근거↗</a>'
-              if s.evidence else "")
+        lab = getattr(s, "evidence_label", "근거") or "근거"
+        if lab == "근거":
+            lab = "근거↗"
+        ev = (f' <a class="ev" href="{_e(s.evidence)}" target="_blank" rel="noopener">'
+              f'{_e(lab)}</a>' if s.evidence else "")
         reason = getattr(s, "reason", "")
         why = f'<div class="why">{_e(reason)}</div>' if reason else ""
         body = _e(s.detail) if s.detail else ""
@@ -189,6 +195,8 @@ def _card(r: ThemeResult, rank: int) -> str:
                  f'{len(r.notes)}건</summary><ul>'
                  + "".join(f"<li>{_e(n)}</li>" for n in r.notes) + "</ul></details>")
 
+    tick_html = " · ".join(
+        f'<span title="{_e(NAMES.get(t.upper(), ""))}">{_e(t)}</span>' for t in r.tickers)
     nc = sp.get("n_customers", 0)
     cust_txt = f" · 고객군 {nc}개사" if nc else " · 고객군 미지정"
     tops = r.top_axes
@@ -229,7 +237,7 @@ def _card(r: ThemeResult, rank: int) -> str:
     </div>
   </div>
   <p class="thesis">{_e(r.thesis)}</p>
-  <p class="tick-list">{_e(" · ".join(r.tickers))}
+  <p class="tick-list">{tick_html}
      <em>· SEC 재무 {sp.get('n_companies', 0)}개사{cust_txt} · 살아있는 축 {r.coverage:.0f}%
      · 기각 {r.n_rejected}개</em></p>
   {thesis_line}
@@ -286,7 +294,8 @@ def _stock_table(r: ThemeResult) -> str:
         rel = s.get("rel_12m")
         cls = "cool" if rel is not None and rel < -5 else ("hot" if rel is not None and rel > 20 else "")
         rows.append(
-            f'<tr class="{cls}"><th scope="row">{_e(s["ticker"])}</th>'
+            f'<tr class="{cls}"><th scope="row">{_e(s["ticker"])}'
+            f'<span class="coname">{_e(NAMES.get(s["ticker"].upper(), ""))}</span></th>'
             f'<td class="num">{num("rel_12m", "{:+.1f}", "%p")}</td>'
             f'<td class="num">{num("abs_12m", "{:+.1f}", "%")}</td>'
             f'<td class="num">{num("drawdown", "{:.0f}", "%")}</td>'
@@ -297,7 +306,7 @@ def _stock_table(r: ThemeResult) -> str:
     return (
         '<details class="stocks"><summary>종목별 내역 '
         f'({len(r.stocks)}개 · 미반영 순)</summary>'
-        '<table class="stk"><thead><tr><th>티커</th>'
+        '<table class="stk"><thead><tr><th>티커 · 회사명</th>'
         '<th class="num">상대수익 12M</th><th class="num">절대 12M</th>'
         '<th class="num">고점대비</th><th class="num">매출 YoY</th>'
         '<th class="num">영업이익률</th></tr></thead>'
@@ -459,7 +468,9 @@ border:1px solid var(--border);font-size:11.5px}
 .stk th,.stk td{border-bottom:1px solid var(--grid);padding:4px 8px;text-align:left}
 .stk thead th{color:var(--muted);font-size:10.5px;text-transform:uppercase;
 letter-spacing:.04em;font-weight:600;white-space:nowrap}
-.stk th[scope=row]{font-weight:600;font-variant-numeric:tabular-nums}
+.stk th[scope=row]{font-weight:600;font-variant-numeric:tabular-nums;white-space:nowrap}
+.coname{display:block;font-weight:400;font-size:10.5px;color:var(--muted);
+letter-spacing:0;max-width:210px;overflow:hidden;text-overflow:ellipsis}
 .stk .num{text-align:right;font-variant-numeric:tabular-nums}
 .stk tr.cool th[scope=row]{color:var(--series-1)}
 .stk tr.hot th[scope=row]{color:var(--muted)}

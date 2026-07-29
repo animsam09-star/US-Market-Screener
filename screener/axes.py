@@ -18,6 +18,11 @@ from .stats import best_lag, freq_periods, last, pct_rank, scale, slope, yoy
 
 FRED_URL = "https://fred.stlouisfed.org/series/{}"
 
+
+def _fred_pair(a: str, b: str) -> str:
+    """두 계열을 한 그래프에. 비율을 주장할 때 분자만 링크하면 오해를 부른다."""
+    return f"https://fred.stlouisfed.org/graph/?id={a},{b}"
+
 # 테마가 themes.yaml 에서 선언하는 촉매 이름 -> 축 키
 # 테마는 '왜 오르는지'를 먼저 말해야 하고, 점수는 그 주장 안에서만 나온다.
 # 선언하지 않은 축이 우연히 높다고 순위를 만들면 그건 연관성이지 논리가 아니다.
@@ -57,6 +62,9 @@ class Signal:
     reason: str = ""              # 기각·미확증 사유
     evidence: str = ""
     raw: float | None = None
+    # 링크가 실제로 무엇을 보여주는지. 비율을 주장하면서 분자만 링크하면
+    # 읽는 사람이 정반대로 이해한다(재고 금액은 늘 최고치 근처다).
+    evidence_label: str = "근거"
 
     @property
     def effective(self) -> float | None:
@@ -488,14 +496,20 @@ def a8_inventory(cfg: dict, fred) -> Signal:
         return _reject(*K, f"수요 붕괴 — 재고는 낮지만 {dlab}가 {dg:+.1f}%. "
                            "재입고 여지가 아니라 주문 자체가 줄어 재고가 마른 것", detail)
 
+    # 근거 링크는 '비율'을 보여줘야 한다. 재고 금액만 걸면 오해를 부른다 —
+    # 재고 금액은 물가와 성장 때문에 늘 최고치 근처인데, 비율은 낮을 수 있다.
+    # FRED 에 산업별 비율 시리즈가 없으므로 두 원계열을 함께 띄운다.
+    ev = _fred_pair(inv_id, sh_id)
+    lab = "재고·출하 원계열↗ (비율은 두 계열의 나눗셈)"
+
     # 확증 ②: 긴 창도 낮다고 말해야 진짜 재고 고갈이다
     if rank_all is not None and rank_all >= 50:
         return Signal(*K, sc * 0.5, "unconfirmed", detail,
                       f"코로나 왜곡 의심 — 10년 창으로는 {rank:.0f}분위지만 전체 이력으로는 "
                       f"{rank_all:.0f}분위(중앙값 수준). 2020~22 재고 급증이 기준 분포를 "
                       "부풀려 현재가 낮아 보이는 것일 수 있다",
-                      FRED_URL.format(inv_id), cur)
-    return Signal(*K, sc, "ok", detail, "", FRED_URL.format(inv_id), cur)
+                      ev, cur, evidence_label=lab)
+    return Signal(*K, sc, "ok", detail, "", ev, cur, evidence_label=lab)
 
 
 def _ratio(num: list, den: list) -> list:
@@ -551,11 +565,13 @@ def a9_bottleneck(cfg: dict, fred) -> Signal:
         return Signal(*K, rank, "unconfirmed", detail, "확증 실패: 신규수주 조회 실패")
 
     detail += f", 신규수주 YoY {ng:+.1f}%"
+    ev = _fred_pair(bl, sh)
+    lab = "수주잔고·출하 원계열↗ (배수는 두 계열의 나눗셈)"
     if ng > 1.0:
-        return Signal(*K, rank, "ok", detail + " — 수요 초과형 병목", "", FRED_URL.format(bl), cur)
+        return Signal(*K, rank, "ok", detail + " — 수요 초과형 병목", "", ev, cur, evidence_label=lab)
     return Signal(*K, rank * 0.5, "unconfirmed", detail,
                   "생산 차질형 — 신규수주는 늘지 않는데 잔고만 쌓이는 중. "
-                  "공급망이 풀리면 해소된다", FRED_URL.format(bl), cur)
+                  "공급망이 풀리면 해소된다", ev, cur, evidence_label=lab)
 
 
 # ---------------------------------------------------------------- ⑩ 대체
