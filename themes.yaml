@@ -88,7 +88,9 @@ themes:
     tickers: [HEI, TDG, HWM, RBC, DCO, AIR, CW]
     customers:
       tickers: [DAL, UAL, AAL, LUV, ALK, FDX]
-      series: IPG3364T9S
+      # 애프터마켓의 고객은 항공기 제조사가 아니라 항공사다. 기재를 굴린
+      # 만큼 정비 수요가 난다 — BTS 여객마일(FRED 재배포)이 진짜 전방수요다.
+      series: AIRRPMTSI
     edgar_keywords: ["aftermarket spare parts", "MRO capacity", "aircraft utilization"]
     fedreg_terms: ["airworthiness directive"]
     fedreg_agencies: [federal-aviation-administration]
@@ -169,9 +171,9 @@ themes:
     fedreg_terms: ["steel imports", "section 232"]
     fedreg_agencies: [commerce-department, international-trade-administration]
     fred:
-      industrial_production: IPG331S
-      capacity_utilization: CAPUTLG331S
-      capacity_index: CAPG331S
+      industrial_production: IPG3311A2S      # 철강 세부(331 전체는 알루미늄·구리 포함)
+      capacity_utilization: CAPUTLG3311A2S
+      capacity_index: CAPG3311A2S
       ppi_output: WPU1017
       ppi_input: WPU101
       inventories: A31STI
