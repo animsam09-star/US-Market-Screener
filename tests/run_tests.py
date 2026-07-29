@@ -487,6 +487,54 @@ def f20_substitution_axis():
     check("F20 NAICS 미지정이면 nodata", s2.status == "nodata", s2.status)
 
 
+# ---------------------------------------------------------------- F21
+def f21_usaspending_incomplete_quarter():
+    """진행 중인 분기를 그대로 쓰면 '계약 급감'으로 오독한다.
+
+    실측: FY2026 Q4 = -11,407달러(직전 분기들은 90~178십억). 연방 계약은
+    보고 지연이 1~3개월이라 분기가 끝나도 한동안 계속 채워진다. 크기로
+    판정하면 '급감'과 '집계 미완'을 구별할 수 없어 날짜로 자른다.
+    """
+    from datetime import date as _d
+    from datetime import timedelta as _td
+
+    import screener.usaspending as U
+
+    today = _d.today()
+    check("F21 보고지연 상수 존재", U.LAG_DAYS >= 60, str(U.LAG_DAYS))
+
+    # 회계분기 -> 달력 마감일
+    check("F21 FY Q1 은 전년 12월말", U._fq_to_date(2026, 1) == _d(2025, 12, 31))
+    check("F21 FY Q4 는 당년 9월말", U._fq_to_date(2026, 4) == _d(2026, 9, 30))
+
+    # 잘라내기 경계: LAG_DAYS 안쪽 분기는 버려야 한다
+    cutoff = today - _td(days=U.LAG_DAYS)
+    check("F21 컷오프가 과거", cutoff < today)
+
+    # TTM 이 계절성을 걷어내는지
+    q = [(_d(2020 + i // 4, 3 * (i % 4) + 3, 28), 100.0 if i % 4 else 400.0)
+         for i in range(16)]
+    t = U.ttm(q)
+    vals = [v for _, v in t]
+    check("F21 TTM 은 4분기 합", all(abs(v - 700.0) < 1e-6 for v in vals),
+          str(vals[:3]))
+
+
+# ---------------------------------------------------------------- F22
+def f22_budget_axis_precedence():
+    """방산 수요는 규제가 아니라 예산이 만든다.
+
+    사고: 방산 논지가 '예산 확정 다년 계약'인데 Federal Register 규제 검색으로
+    재고 있었다. 애초에 맞지 않는 도구였고 결과는 촉매 0 이었다.
+    """
+    from screener.axes import a5_budget
+
+    check("F22 usaspending 설정 없으면 None(규제 검색으로 넘김)",
+          a5_budget({}, {}) is None)
+    check("F22 설정 있으면 Signal 반환",
+          a5_budget({"usaspending": {"agency": "Department of Defense"}}, {}) is not None)
+
+
 def main() -> int:
     for fn in [f1_ytd_differencing, f2_no_economy_wide_fallback, f3_bea_result_shapes,
                f4_bea_final_demand_excluded, f5_naics_matching_direction,
@@ -496,7 +544,8 @@ def main() -> int:
                f13_self_reference_excluded, f14_evidence_matches_claim,
                f15_notfound_not_host_failure, f16_company_names,
                f17_source_prefix_routing, f18_eia_response_shape,
-               f19_key_name_aliases, f20_substitution_axis]:
+               f19_key_name_aliases, f20_substitution_axis,
+               f21_usaspending_incomplete_quarter, f22_budget_axis_precedence]:
         try:
             fn()
         except Exception as e:

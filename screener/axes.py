@@ -364,6 +364,69 @@ def a4_replacement(cust_fin: dict) -> Signal:
 
 # ---------------------------------------------------------------- ⑤ 정책
 
+def a5_budget(theme: dict, group: dict) -> Signal | None:
+    """예산이 실제로 집행되고 있는가 — 연방 계약 의무액.
+
+    Federal Register 는 '규제가 온다'를 말하고, 계약 데이터는 '돈이 실제로
+    움직였다'를 말한다. 방산처럼 규제가 아니라 예산이 수요를 만드는 테마에서는
+    이쪽이 주장이고 규제 검색은 애초에 맞지 않는 도구다.
+
+    설정이 없으면 None 을 돌려준다(호출부가 Federal Register 로 넘어간다).
+    """
+    cfg = theme.get("usaspending") or {}
+    agency = cfg.get("agency")
+    if not agency:
+        return None
+
+    K = ("A5", "⑤ 정책·예산(연방 계약)")
+    from .usaspending import UsaError, contract_obligations
+    from .usaspending import ttm as usa_ttm
+    try:
+        q = contract_obligations(agency, naics=cfg.get("naics"), psc=cfg.get("psc"))
+    except UsaError as e:
+        return _nodata(*K, f"계약 데이터 조회 실패: {e}")
+
+    t = usa_ttm(q)
+    g = yoy(t, 4)
+    if len(g) < 8:
+        return _nodata(*K, "TTM 이력 부족")
+
+    cur = g[-1][1]
+    rank = pct_rank(t[-1][1], [v for _, v in t])
+    tr = slope(g, 4)
+    detail = (f"{agency} 계약 TTM {t[-1][1] / 1e9:,.0f}십억$ "
+              f"(자체 이력 {rank:.0f}분위), YoY {cur:+.1f}%")
+    if tr is not None:
+        detail += f", 증가율 추세 {tr:+.1f}%p/분기"
+    ev = "https://www.usaspending.gov/search"
+
+    # 기각: 계약이 줄고 있으면 '예산 확정 다년 계약' 논지가 성립하지 않는다
+    if cur < -5:
+        return _reject(*K, f"계약 감소 — TTM 의무액 YoY {cur:+.1f}%. "
+                           "예산이 밀어주는 중이라는 근거가 없다", detail)
+
+    sc = mean_of([scale(cur, -5, 25), rank])
+
+    # 확증: 계약 증가가 아직 그룹 매출로 안 넘어왔으면 그게 기회다
+    rev = (group.get("rev_yoy_series") or [])
+    if rev:
+        rg = rev[-1][1]
+        detail += f", 그룹 매출 YoY {rg:+.1f}%"
+        if cur - rg > 5:
+            return Signal(*K, sc, "ok",
+                          detail + " — 계약이 매출보다 앞서 있다(미전이 여지)",
+                          "", ev, cur)
+        if rg - cur > 10:
+            return Signal(*K, sc * 0.6, "unconfirmed", detail,
+                          "이미 반영 — 매출이 계약 증가율을 앞질렀다", ev, cur)
+    return Signal(*K, sc, "ok", detail, "", ev, cur)
+
+
+def mean_of(xs) -> float:
+    vals = [x for x in xs if x is not None]
+    return sum(vals) / len(vals) if vals else 0.0
+
+
 def a5_policy(theme: dict, fr: dict) -> Signal:
     """이미 시행된 규제는 이미 반영됐다. 앞으로 올 것만 신호다.
 

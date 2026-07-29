@@ -413,7 +413,7 @@ def evaluate_theme(theme: dict, tmap: dict, bench: list, series_cache: dict) -> 
         axes.a2_supply(fc, fred),
         axes.a3_newtech(theme, group, fts),
         axes.a4_replacement(cust_fin),
-        axes.a5_policy(theme, fr),
+        axes.a5_budget(theme, group) or axes.a5_policy(theme, fr),
         axes.a6_capex(group, fc, fred),
         axes.a7_spread(fc, group, fred),
         axes.a8_inventory(fc, fred),
