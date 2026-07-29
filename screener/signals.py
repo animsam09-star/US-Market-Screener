@@ -139,7 +139,8 @@ def u3_price_unreacted(px: dict) -> Signal:
     if rel is None:
         return Signal("U3", "주가 미반응(vs S&P)", None, "nodata", "", "주가 이력 부족")
     return Signal("U3", "주가 미반응(vs S&P)", scale(-rel, -35, 35), "ok",
-                  f"12개월 상대수익률 {rel:+.1f}%p (절대 {px['abs_12m']:+.1f}%)")
+                  f"12개월 상대수익률 {rel:+.1f}%p (절대 {px['abs_12m']:+.1f}%)",
+                  raw=rel)
 
 
 def u4_drawdown(px: dict) -> Signal:
@@ -147,7 +148,7 @@ def u4_drawdown(px: dict) -> Signal:
     if dd is None:
         return Signal("U4", "고점 대비 눌림", None, "nodata", "", "주가 이력 부족")
     return Signal("U4", "고점 대비 눌림", scale(dd, 0, 35), "ok",
-                  f"52주 고점 대비 {-dd:.1f}%")
+                  f"52주 고점 대비 {-dd:.1f}%", raw=dd)
 
 
 # ================================================================ 재무 집계

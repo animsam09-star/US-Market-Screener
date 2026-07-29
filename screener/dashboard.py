@@ -72,7 +72,7 @@ STATUS_TAG = {
 }
 
 
-def _signal_rows(sigs, *, show_status: bool = True) -> str:
+def _signal_rows(sigs, *, show_status: bool = True, claimed=None) -> str:
     """축별 행. 기각·미확증은 사유를 반드시 함께 보여준다.
 
     조용한 0점은 '신호가 약함'과 '논리가 틀림'을 구별하지 못하게 만든다.
@@ -95,8 +95,10 @@ def _signal_rows(sigs, *, show_status: bool = True) -> str:
         reason = getattr(s, "reason", "")
         why = f'<div class="why">{_e(reason)}</div>' if reason else ""
         body = _e(s.detail) if s.detail else ""
+        star = ('<span class="star">★</span>'
+                if claimed and getattr(s, "key", None) in claimed else "")
         rows.append(
-            f'<tr class="{cls}"><th scope="row">{_e(s.label)}{tag}</th>'
+            f'<tr class="{cls}"><th scope="row">{star}{_e(s.label)}{tag}</th>'
             f'<td class="bcell">{_bar(None if status in ("rejected", "nodata") else eff)}</td>'
             f'<td class="num">{sc}</td>'
             f'<td class="det">{body}{ev}{why}</td></tr>'
@@ -200,6 +202,7 @@ def _card(r: ThemeResult, rank: int) -> str:
     nc = sp.get("n_customers", 0)
     cust_txt = f" · 고객군 {nc}개사" if nc else " · 고객군 미지정"
     tops = r.top_axes
+    vtag, vcls, vtext = _verdict(r)
     drivers = ("점수를 만든 축: "
                + " / ".join(f"<strong>{_e(s.label)}</strong> {s.effective:.0f}" for s in tops)
                ) if tops else "주장한 촉매 축이 전부 죽어 있음"
@@ -240,20 +243,24 @@ def _card(r: ThemeResult, rank: int) -> str:
   <p class="tick-list">{tick_html}
      <em>· SEC 재무 {sp.get('n_companies', 0)}개사{cust_txt} · 살아있는 축 {r.coverage:.0f}%
      · 기각 {r.n_rejected}개</em></p>
-  {thesis_line}
-  <p class="drivers">{drivers}</p>
+  <p class="verdict-line"><span class="vd {vcls}">{_e(vtag)}</span>{_e(vtext)}</p>
   {inc_line}
+  <details class="detail">
+    <summary>근거 자세히 — 축별 판정과 원본 링크</summary>
+    {thesis_line}
+    <p class="drivers">{drivers}</p>
   <div class="sparks">{''.join(sparks)}</div>
   <div class="tables">
     <div>
-      <h4>촉매 축 — 왜 오를 이유가 있나 <em>(점수는 최강 2개 축의 평균)</em></h4>
-      <table class="sig"><tbody>{_signal_rows(r.catalyst)}</tbody></table>
+      <h4>촉매 축 — 왜 오를 이유가 있나 <em>(★ 표시가 이 테마가 주장한 축)</em></h4>
+      <table class="sig"><tbody>{_signal_rows(r.catalyst, claimed=r.claimed)}</tbody></table>
     </div>
     <div>
       <h4>미반영 축 — 왜 아직 안 올랐나</h4>
       <table class="sig"><tbody>{_signal_rows(r.unpriced, show_status=False)}</tbody></table>
     </div>
   </div>
+  </details>
   {_stock_table(r)}
   {notes}
 </article>"""
@@ -277,6 +284,72 @@ def rank_score(r: ThemeResult) -> float:
     conf = 0.5 + 0.5 * (r.coverage / 100.0)
     gate = 1.15 if r.gate_passed >= 2 else 1.0
     return (cat * unp) ** 0.5 * conf * gate
+
+
+# 축을 사람 말로. 점수 대신 이걸 읽고 판단할 수 있어야 한다.
+AXIS_PLAIN = {
+    "A1": "전방 산업이 살아나 주문이 넘어오고 있습니다",
+    "A2": "증산 여력이 없어 공급이 빡빡합니다",
+    "A3": "이 기술을 쓰는 회사가 빠르게 늘고 있습니다",
+    "A4": "고객 설비가 늙어 교체 시기가 왔습니다",
+    "A5": "예산·규제가 수요를 밀어주고 있습니다",
+    "A6": "수년간 투자를 안 해 공급이 줄었습니다",
+    "A7": "판가는 버티는데 원가가 내려 마진이 벌어지고 있습니다",
+    "A8": "재고가 말라 재입고가 오면 크게 튑니다",
+    "A9": "수주가 밀려 값을 올려 받을 수 있습니다",
+    "A10": "수입에 뺏겼던 몫을 되찾고 있습니다",
+}
+
+# '이유 약함'을 설명할 때 쓰는 짧은 명사구
+AXIS_NOUN = {
+    "A1": "전방 수요 전이", "A2": "공급 부족", "A3": "기술 확산",
+    "A4": "교체 수요", "A5": "예산·규제", "A6": "공급 축소",
+    "A7": "마진 확대", "A8": "재고 바닥", "A9": "수주 병목",
+    "A10": "수입 대체",
+}
+
+
+def _verdict(r: ThemeResult) -> tuple[str, str, str]:
+    """한 줄 결론. (판정어, 색상클래스, 문장)
+
+    숫자 두 개와 10개 축을 한 번에 읽으라는 건 무리다. 사람이 실제로 알고 싶은
+    건 '이걸 봐야 하나, 왜'다. 그 한 문장을 데이터에서 만든다.
+    """
+    cat = r.catalyst_score
+    unp = r.unpriced_score or 0.0
+    tops = r.top_axes
+
+    if cat is None or not tops:
+        return ("판정 불가", "v-na",
+                "주장한 촉매를 측정할 데이터가 없습니다. 테마 정의를 고쳐야 합니다.")
+
+    why = AXIS_PLAIN.get(tops[0].key, tops[0].label)
+    strong = cat >= 40
+    cheap = unp >= 50
+
+    # 가격 상태를 구체적으로
+    px = next((s for s in r.unpriced if s.key == "U3"), None)
+    rel = px.raw if px and px.raw is not None else None
+    if rel is None:
+        price = "주가 반응은 확인 불가"
+    elif rel < -10:
+        price = f"주가는 시장보다 {abs(rel):.0f}%p 뒤처져 아직 안 움직였습니다"
+    elif rel < 5:
+        price = "주가는 아직 시장 수준에 머물러 있습니다"
+    else:
+        price = f"주가는 이미 시장보다 {rel:.0f}%p 앞서 올랐습니다"
+
+    noun = AXIS_NOUN.get(tops[0].key, "촉매")
+    if strong and cheap:
+        return ("볼 만함", "v-good", f"{why}. 그런데 {price}.")
+    if strong and not cheap:
+        return ("이미 반영", "v-warn", f"{why}. 다만 {price}.")
+    if not strong and cheap:
+        return ("이유 약함", "v-warn",
+                f"많이 눌려 있지만 오를 이유가 약합니다. "
+                f"{noun} 근거가 충분히 확인되지 않았습니다.")
+    return ("지금은 아님", "v-na",
+            f"{noun} 근거가 약하고, {price}.")
 
 
 def _stock_table(r: ThemeResult) -> str:
@@ -434,6 +507,18 @@ border-left:4px solid var(--critical)}
 .healthwarn p{margin:0;font-size:12px;color:var(--muted)}
 .drivers{margin:0 0 6px;font-size:12px;color:var(--text-secondary)}
 .drivers strong{color:var(--text-primary);font-weight:600}
+.verdict-line{margin:10px 0 8px;font-size:13.5px;line-height:1.6;
+color:var(--text-primary)}
+.vd{display:inline-block;font-size:11.5px;font-weight:600;padding:2px 9px;
+border-radius:6px;border:1px solid currentColor;margin-right:9px;vertical-align:1px}
+.v-good{color:var(--good)}
+.v-warn{color:var(--warning)}
+.v-na{color:var(--muted)}
+.star{color:var(--series-2);margin-right:3px}
+.detail{margin-top:10px}
+.detail>summary{cursor:pointer;font-size:12px;color:var(--text-secondary);
+padding:4px 0}
+.detail[open]>summary{margin-bottom:8px;border-bottom:1px solid var(--grid)}
 .claim{margin:0 0 6px;font-size:12px;display:flex;align-items:center;gap:10px;flex-wrap:wrap}
 .verdict{font-size:11.5px;font-weight:600;padding:2px 9px;border-radius:6px;
 border:1px solid currentColor}
