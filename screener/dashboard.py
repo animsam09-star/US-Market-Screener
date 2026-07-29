@@ -246,8 +246,65 @@ def _card(r: ThemeResult, rank: int) -> str:
       <table class="sig"><tbody>{_signal_rows(r.unpriced, show_status=False)}</tbody></table>
     </div>
   </div>
+  {_stock_table(r)}
   {notes}
 </article>"""
+
+
+def rank_score(r: ThemeResult) -> float:
+    """테마 정렬 기준 — 촉매와 미반영의 기하평균.
+
+    산술평균을 쓰면 한쪽만 높아도 상위로 온다. 실제로 원자력이 촉매 27 에
+    미반영 90 으로 1위였는데, 그건 '왜 오르는지 모르는데 싸다'는 뜻이고
+    이 도구의 전제(둘의 교집합)에 어긋난다. 싼 데는 이유가 있을 수 있다.
+
+    기하평균은 **한쪽이 0이면 총점이 0**이다. 촉매가 죽은 테마는 아무리 눌려
+    있어도 후보가 아니다.
+
+    커버리지를 곱해 신뢰도를 반영한다 — 축 3개로 낸 점수와 축 9개로 낸 점수를
+    같은 저울에 올릴 수 없다. 할인은 0.5~1.0 으로 제한한다.
+    """
+    cat = max(r.catalyst_score or 0.0, 0.0)
+    unp = max(r.unpriced_score or 0.0, 0.0)
+    conf = 0.5 + 0.5 * (r.coverage / 100.0)
+    gate = 1.15 if r.gate_passed >= 2 else 1.0
+    return (cat * unp) ** 0.5 * conf * gate
+
+
+def _stock_table(r: ThemeResult) -> str:
+    """종목별 미반영 내역.
+
+    테마가 '어디를 볼까'를 답하면 이 표는 '그중 뭐가 아직 안 움직였나'를 답한다.
+    종목을 고르는 모델이 아니다 — 촉매는 테마 전체에 걸린다.
+    """
+    rows = []
+    for s in r.stocks:
+        def num(k, fmt="{:+.1f}", suffix=""):
+            v = s.get(k)
+            return f"{fmt.format(v)}{suffix}" if v is not None else "—"
+
+        rel = s.get("rel_12m")
+        cls = "cool" if rel is not None and rel < -5 else ("hot" if rel is not None and rel > 20 else "")
+        rows.append(
+            f'<tr class="{cls}"><th scope="row">{_e(s["ticker"])}</th>'
+            f'<td class="num">{num("rel_12m", "{:+.1f}", "%p")}</td>'
+            f'<td class="num">{num("abs_12m", "{:+.1f}", "%")}</td>'
+            f'<td class="num">{num("drawdown", "{:.0f}", "%")}</td>'
+            f'<td class="num">{num("rev_yoy", "{:+.1f}", "%")}</td>'
+            f'<td class="num">{num("op_margin", "{:.1f}", "%")}</td></tr>')
+    if not rows:
+        return ""
+    return (
+        '<details class="stocks"><summary>종목별 내역 '
+        f'({len(r.stocks)}개 · 미반영 순)</summary>'
+        '<table class="stk"><thead><tr><th>티커</th>'
+        '<th class="num">상대수익 12M</th><th class="num">절대 12M</th>'
+        '<th class="num">고점대비</th><th class="num">매출 YoY</th>'
+        '<th class="num">영업이익률</th></tr></thead>'
+        f'<tbody>{"".join(rows)}</tbody></table>'
+        '<p class="stknote">촉매는 테마 전체에 걸린다. 이 표는 같은 테마 안에서 '
+        '<strong>아직 가격에 안 들어간 종목</strong>을 위로 올린 것이지, '
+        '종목을 고르는 모델이 아니다.</p></details>')
 
 
 def _summary_table(results: list[ThemeResult]) -> str:
@@ -258,9 +315,11 @@ def _summary_table(results: list[ThemeResult]) -> str:
         rows.append(f"<tr><td class='num'>{i}</td><th scope='row'>{_e(r.name)}</th>"
                     f"<td>{_e(r.lead_time)}</td><td class='num'>{cs}</td>"
                     f"<td class='num'>{us}</td><td class='num'>{r.gate_passed}</td>"
-                    f"<td class='num'>{r.coverage:.0f}%</td></tr>")
+                    f"<td class='num'>{r.coverage:.0f}%</td>"
+                    f"<td class='num'>{rank_score(r):.0f}</td></tr>")
     return ("<table class='summary'><thead><tr><th>#</th><th>테마</th><th>리드타임</th>"
-            "<th>촉매</th><th>미반영</th><th>게이트</th><th>커버리지</th></tr></thead>"
+            "<th>촉매</th><th>미반영</th><th>게이트</th><th>커버리지</th>"
+            "<th>순위점수</th></tr></thead>"
             f"<tbody>{''.join(rows)}</tbody></table>")
 
 
@@ -391,6 +450,20 @@ font-weight:400}
 .summary thead th{color:var(--text-secondary);font-size:11px;text-transform:uppercase;
 letter-spacing:.05em;font-weight:600}
 .summary .num{text-align:right;font-variant-numeric:tabular-nums}
+.rankrule{margin:6px 0 0;font-size:12px;color:var(--muted)}
+.rankrule code{background:var(--surface-1);padding:1px 5px;border-radius:4px;
+border:1px solid var(--border);font-size:11.5px}
+.stocks{margin-top:12px;font-size:12px}
+.stocks summary{cursor:pointer;color:var(--text-secondary)}
+.stk{margin-top:8px;font-size:12px}
+.stk th,.stk td{border-bottom:1px solid var(--grid);padding:4px 8px;text-align:left}
+.stk thead th{color:var(--muted);font-size:10.5px;text-transform:uppercase;
+letter-spacing:.04em;font-weight:600;white-space:nowrap}
+.stk th[scope=row]{font-weight:600;font-variant-numeric:tabular-nums}
+.stk .num{text-align:right;font-variant-numeric:tabular-nums}
+.stk tr.cool th[scope=row]{color:var(--series-1)}
+.stk tr.hot th[scope=row]{color:var(--muted)}
+.stknote{margin:8px 0 0;font-size:11.5px;color:var(--muted)}
 .foot{margin-top:34px;padding-top:16px;border-top:1px solid var(--grid);
 color:var(--muted);font-size:12px}
 .foot code{background:var(--surface-1);padding:1px 5px;border-radius:4px;
@@ -404,11 +477,7 @@ padding:6px 11px;cursor:pointer;font:inherit;font-size:12px}
 
 
 def build_html(results: list[ThemeResult], *, benchmark: str = "SPY") -> str:
-    ranked = sorted(
-        results,
-        key=lambda r: -((r.catalyst_score or 0) * 0.5 + (r.unpriced_score or 0) * 0.5
-                        + (12 if r.gate_passed >= 2 else 0)),
-    )
+    ranked = sorted(results, key=lambda r: -rank_score(r))
     now = datetime.now().strftime("%Y-%m-%d %H:%M")
     n_target = sum(1 for r in ranked
                    if (r.catalyst_score or 0) >= 50 and (r.unpriced_score or 0) >= 50)
@@ -452,6 +521,11 @@ r.dataset.theme=r.dataset.theme==='dark'?'light':'dark'">라이트/다크</butto
 벤치마크 {_e(benchmark)} · 전 지표 무료 공공데이터(FRED·SEC·Federal Register·Yahoo)</p>
 
 {warn}
+<p class="rankrule">정렬 기준: <code>√(촉매 × 미반영) × 신뢰도 × 게이트</code>
+ — <strong>기하평균이라 한쪽이 0이면 총점도 0</strong>이다. 촉매가 죽은 테마는 아무리
+ 눌려 있어도 후보가 아니다(싼 데는 이유가 있을 수 있다). 신뢰도는 살아있는 촉매 축의
+ 비율로, 축 3개로 낸 점수와 축 9개로 낸 점수를 같은 저울에 올리지 않기 위한 할인이다.</p>
+
 <h2>사분면 — 촉매 대비 미반영</h2>
 <div class="panel">{_scatter(ranked)}</div>
 

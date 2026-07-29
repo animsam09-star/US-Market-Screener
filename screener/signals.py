@@ -40,6 +40,7 @@ class ThemeResult:
     customers: dict = field(default_factory=dict)
     claimed: set = field(default_factory=set)      # 테마가 선언한 촉매 축 키
     unknown_catalysts: list = field(default_factory=list)
+    stocks: list = field(default_factory=list)     # 종목별 미반영 내역
 
     @property
     def claimed_axes(self) -> list[Signal]:
@@ -396,4 +397,62 @@ def evaluate_theme(theme: dict, tmap: dict, bench: list, series_cache: dict) -> 
         "n_companies": group.get("n_companies", 0),
         "n_customers": cust_fin.get("n_companies", 0),
     }
+    res.stocks = per_stock(tickers, tmap, prices, bench)
     return res
+
+
+def per_stock(tickers: list[str], tmap: dict, prices: dict, bench: list) -> list[dict]:
+    """종목별 내역.
+
+    촉매는 테마 전체에 걸리지만, 그게 아직 가격에 안 들어간 정도는 종목마다
+    다르다. 테마가 '어디를 볼까'를 답하면 이 표는 '그중 뭐가 아직 안 움직였나'를
+    답한다. 종목을 고르는 모델이 아니라, 같은 테마 안의 미반영 정도 비교다.
+    """
+    out: list[dict] = []
+    for t in tickers:
+        px = prices.get(t) or []
+        row: dict = {"ticker": t}
+        if len(px) > 260:
+            back = min(len(px), 252)
+            abs12 = 100.0 * (px[-1][1] / px[-back][1] - 1.0)
+            row["abs_12m"] = abs12
+            if bench and len(bench) > 260:
+                bn = _price_on(bench, px[-1][0])
+                bt = _price_on(bench, px[-back][0])
+                if bn and bt:
+                    row["rel_12m"] = abs12 - 100.0 * (bn / bt - 1.0)
+            peak = max(v for _, v in px[-252:])
+            row["drawdown"] = 100.0 * (1.0 - px[-1][1] / peak)
+
+        cik = tmap.get(t.upper())
+        facts = None
+        if cik:
+            try:
+                facts = sec_company_facts(cik)
+            except FetchError:
+                facts = None
+        con = ({c: xbrl_quarterly(facts, c) for c in CONCEPTS} if facts is not None
+               else {c: snapshot_quarterly(t, c) for c in CONCEPTS})
+
+        rev_ttm = dict(ttm(con.get("revenue", {})))
+        if rev_ttm:
+            k = max(rev_ttm)
+            prev = (k[0] - 1, k[1])
+            if prev in rev_ttm and rev_ttm[prev]:
+                row["rev_yoy"] = 100.0 * (rev_ttm[k] / rev_ttm[prev] - 1.0)
+        eb = dict(ttm(con.get("ebit", {})))
+        common = sorted(set(eb) & set(rev_ttm))
+        if common:
+            k = common[-1]
+            if rev_ttm[k]:
+                row["op_margin"] = 100.0 * eb[k] / rev_ttm[k]
+        out.append(row)
+
+    # 미반영도 순으로: 상대수익률이 낮고 눌림이 클수록 위
+    def key(r):
+        rel = r.get("rel_12m")
+        dd = r.get("drawdown")
+        if rel is None:
+            return 1e9
+        return rel - (dd or 0) * 0.3
+    return sorted(out, key=key)
