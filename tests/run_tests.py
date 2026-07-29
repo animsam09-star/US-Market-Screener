@@ -376,6 +376,58 @@ def f16_company_names():
     check("F16 값 확인", "Eaton" in (n.get("ETN") or ""), str(n.get("ETN")))
 
 
+# ---------------------------------------------------------------- F17
+def f17_source_prefix_routing():
+    """FRED 한 곳에만 묶여 있으면 산업 고유 지표를 못 쓴다.
+
+    정유는 주 단위로 움직이는데 EIA 주간 데이터는 FRED 에 재배포되지 않는다.
+    접두사로 소스를 고를 수 있어야 한다. 그리고 키가 없을 때 조용히 죽으면
+    안 된다 — 사유가 남아야 한다.
+    """
+    from screener.axes import _fred_pair, _ident, _series_url
+    from screener.signals import _resolve_series
+
+    check("F17 접두사 없으면 FRED", _ident("A35STI") == ("fred", "A35STI"))
+    check("F17 eia 접두사 인식", _ident("eia:PET.WPULEUS3.W") == ("eia", "PET.WPULEUS3.W"))
+    check("F17 FRED 링크", "fred.stlouisfed.org" in _series_url("A35STI"))
+    check("F17 EIA 링크", "eia.gov" in _series_url("eia:PET.WPULEUS3.W"))
+    check("F17 같은 소스 쌍은 합쳐 그림",
+          "id=A35STI,A35SVS" in _fred_pair("A35STI", "A35SVS"))
+    check("F17 다른 소스 쌍은 분자만",
+          "eia.gov" in _fred_pair("eia:PET.WCESTUS1.W", "A24SVS"))
+
+    try:
+        _resolve_series("eia:PET.WPULEUS3.W")
+        check("F17 키 없으면 사유와 함께 실패", False, "예외가 안 났다")
+    except Exception as e:
+        check("F17 키 없으면 사유와 함께 실패", "키 없음" in str(e), str(e)[:60])
+
+    try:
+        _resolve_series("bogus:X")
+        check("F17 모르는 소스는 거부", False, "예외가 안 났다")
+    except Exception as e:
+        check("F17 모르는 소스는 거부", "소스" in str(e), str(e)[:50])
+
+
+# ---------------------------------------------------------------- F18
+def f18_eia_response_shape():
+    """EIA 응답의 값 열 이름은 데이터셋마다 다르다.
+
+    BEA 때 응답 구조를 잘못 가정해 죽은 적이 있다. 같은 실수를 막는다.
+    """
+    from screener.eia import _parse_period, _pick_value
+
+    check("F18 주간 기간", _parse_period("2026-07-18") is not None)
+    check("F18 월간 기간", _parse_period("2026-07") is not None)
+    check("F18 연간 기간", _parse_period("2026") is not None)
+    check("F18 value 열 우선", _pick_value({"period": "x", "value": "94.2"}) == 94.2)
+    check("F18 다른 이름도 인식",
+          _pick_value({"period": "x", "stocks": "220.5", "stocks-units": "kb"}) == 220.5)
+    check("F18 단위 열은 값이 아님",
+          _pick_value({"period": "x", "price-units": "3"}) is None,
+          str(_pick_value({"period": "x", "price-units": "3"})))
+
+
 def main() -> int:
     for fn in [f1_ytd_differencing, f2_no_economy_wide_fallback, f3_bea_result_shapes,
                f4_bea_final_demand_excluded, f5_naics_matching_direction,
@@ -383,7 +435,8 @@ def main() -> int:
                f9_inventory_covid_window, f10_newtech_sample_floor,
                f11_vendored_ticker_fallback, f12_snapshot_fallback,
                f13_self_reference_excluded, f14_evidence_matches_claim,
-               f15_notfound_not_host_failure, f16_company_names]:
+               f15_notfound_not_host_failure, f16_company_names,
+               f17_source_prefix_routing, f18_eia_response_shape]:
         try:
             fn()
         except Exception as e:

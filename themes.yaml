@@ -12,7 +12,9 @@
 #                 series:  고객 산업의 실질 활동 지표 (① 전이 실증)
 #               ※ discover_customers.py 로 자동 채울 수 있고, 아래 값은 수정 가능
 #
-#  fred:
+#  fred:  (이름은 fred 지만 소스는 접두사로 고른다)
+#    접두사 없으면 FRED,  "eia:PET.WPULEUS3.W" 처럼 쓰면 EIA.
+#    EIA 는 무료 키 필요(EIA_API_KEY 또는 eia_key.txt). 없으면 해당 축만 nodata.
 #    industrial_production  전방수요 Q            ②확증
 #    capacity_utilization   가동률                ②주장
 #    capacity_index         생산능력 지수(CAPG*)  ②기각·⑥확증  ← 사양산업 판별의 핵심
@@ -137,13 +139,16 @@ themes:
     fedreg_terms: ["renewable fuel standard", "refinery emissions"]
     fedreg_agencies: [environmental-protection-agency]
     fred:
+      # 정유는 주 단위로 움직인다. 월간 산업생산으로는 못 본다.
+      # EIA 주간 데이터는 FRED 에 재배포되지 않아 직접 받는다(무료 키 필요).
+      # 키가 없으면 해당 축은 사유와 함께 nodata 가 된다 — 조용히 죽지 않는다.
+      capacity_utilization: "eia:PET.WPULEUS3.W"    # 정제설비 가동률(주간)
+      capacity_index: CAPG324S                       # 정제능력(월간, FRED)
       industrial_production: IPG324S
-      capacity_utilization: CAPUTLG324S
-      capacity_index: CAPG324S
       ppi_output: WPU057303
       ppi_input: WPU0561
-      inventories: A24STI
-      shipments: A24SVS
+      inventories: "eia:PET.WGTSTUS1.W"              # 휘발유 재고(주간)
+      shipments: "eia:PET.WGFUPUS2.W"                # 휘발유 공급량(주간)
 
   - name: 원자력 연료주기
     thesis: 각국 원전 회귀 + 러시아산 농축우라늄 배제로 서방 농축·변환 능력이 병목

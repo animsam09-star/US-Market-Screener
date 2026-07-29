@@ -16,12 +16,46 @@ from datetime import date
 
 from .stats import best_lag, freq_periods, last, pct_rank, scale, slope, yoy
 
-FRED_URL = "https://fred.stlouisfed.org/series/{}"
+def _ident(sid: str) -> tuple[str, str]:
+    """'eia:X' -> ('eia','X'),  'A35STI' -> ('fred','A35STI')"""
+    raw = str(sid or "").strip()
+    if ":" in raw:
+        a, b = raw.split(":", 1)
+        return a.strip().lower(), b.strip()
+    return "fred", raw
+
+
+def _series_url(sid: str) -> str:
+    """근거 링크. 소스가 FRED 가 아닐 수도 있다."""
+    src, ident = _ident(sid)
+    if src == "eia":
+        from .eia import series_url
+        return series_url(ident)
+    return f"https://fred.stlouisfed.org/series/{ident}"
+
+
+class _FredUrl:
+    """기존 FRED_URL.format(x) 호출을 소스 인식형으로 유지하기 위한 어댑터."""
+
+    @staticmethod
+    def format(sid: str) -> str:
+        return _series_url(sid)
+
+
+FRED_URL = _FredUrl()
 
 
 def _fred_pair(a: str, b: str) -> str:
-    """두 계열을 한 그래프에. 비율을 주장할 때 분자만 링크하면 오해를 부른다."""
-    return f"https://fred.stlouisfed.org/graph/?id={a},{b}"
+    """두 계열을 한 그래프에. 비율을 주장할 때 분자만 링크하면 오해를 부른다.
+
+    두 계열이 같은 소스일 때만 합쳐 그릴 수 있다. 소스가 다르면 분자 쪽만
+    링크하되 라벨에서 비율임을 밝힌다(라벨은 호출부가 붙인다).
+    """
+    sa, ia = _ident(a)
+    sb, ib = _ident(b)
+    if sa == "fred" and sb == "fred":
+        return f"https://fred.stlouisfed.org/graph/?id={ia},{ib}"
+    return _series_url(a)
 
 # 테마가 themes.yaml 에서 선언하는 촉매 이름 -> 축 키
 # 테마는 '왜 오르는지'를 먼저 말해야 하고, 점수는 그 주장 안에서만 나온다.

@@ -9,8 +9,16 @@
 
 촉매만 보면 결국 남들이 이미 산 걸 산다. 미반영 축이 그걸 막는다.
 
-전 지표가 **무료 공공데이터**다: FRED · SEC XBRL · SEC 전문검색 · Federal Register ·
-Yahoo Finance · BEA 산업연관표.
+전 지표가 **무료 공공데이터**다: FRED · EIA · SEC XBRL · SEC 전문검색 ·
+Federal Register · Yahoo Finance · BEA 산업연관표.
+
+지표는 **소스 접두사**로 고른다. FRED 한 곳에 묶이면 산업 고유 지표를 못 쓴다 —
+정유는 주 단위로 움직이는데 EIA 주간 데이터는 FRED 에 재배포되지 않는다.
+
+```yaml
+capacity_utilization: "eia:PET.WPULEUS3.W"   # EIA 주간 정제가동률
+capacity_index: CAPG324S                      # 접두사 없으면 FRED
+```
 
 ---
 
@@ -149,6 +157,7 @@ GitHub Actions 러너는 사내망 밖이라 이 문제가 없다.
 |---|---|---|
 | `SCREENER_UA` | 권장 | SEC 가 요구하는 연락처 포함 User-Agent. 없으면 403 위험 |
 | `BEA_API_KEY` | 선택 | 산업연관표 기반 고객군 자동 지정 |
+| `EIA_API_KEY` | 선택 | 정유·에너지 주간 지표 (FRED 에 없음) |
 | `CLOUDFLARE_API_TOKEN` | 선택 | 비공개 배포 |
 | `CLOUDFLARE_ACCOUNT_ID` | 선택 | 비공개 배포 |
 

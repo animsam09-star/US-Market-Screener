@@ -122,6 +122,7 @@ jobs:
         timeout-minutes: 8
         env:
           BEA_API_KEY: ${{ secrets.BEA_API_KEY }}
+          EIA_API_KEY: ${{ secrets.EIA_API_KEY }}
           # SEC 는 연락처가 담긴 User-Agent 를 요구한다. 없으면 403.
           SCREENER_UA: ${{ secrets.SCREENER_UA }}
         run: python run.py --no-open

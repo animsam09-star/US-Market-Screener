@@ -323,6 +323,34 @@ def price_stats(tickers: list[str], prices: dict, bench: list) -> dict:
     return {"abs_12m": abs_12m, "rel_12m": rel, "drawdown": dd, "index": idx}
 
 
+# ================================================================ 시계열 해석
+
+def _resolve_series(sid: str):
+    """'eia:PET.WPULEUS3.W' -> EIA, 'fred:X' 또는 접두사 없음 -> FRED."""
+    raw = str(sid or "").strip()
+    if ":" in raw:
+        src, ident = raw.split(":", 1)
+        src, ident = src.strip().lower(), ident.strip()
+    else:
+        src, ident = "fred", raw
+    if src == "eia":
+        from .eia import eia_series
+        return eia_series(ident)
+    if src == "fred":
+        return fred_series(ident)
+    raise FetchError(f"알 수 없는 데이터 소스 접두사: {src!r} ({raw})")
+
+
+def series_evidence(sid: str) -> str:
+    """근거 링크. 소스마다 사람이 볼 수 있는 페이지가 다르다."""
+    raw = str(sid or "").strip()
+    if raw.lower().startswith("eia:"):
+        from .eia import series_url
+        return series_url(raw.split(":", 1)[1].strip())
+    ident = raw.split(":", 1)[1].strip() if ":" in raw else raw
+    return f"https://fred.stlouisfed.org/series/{ident}"
+
+
 # ================================================================ 평가
 
 def evaluate_theme(theme: dict, tmap: dict, bench: list, series_cache: dict) -> ThemeResult:
@@ -339,8 +367,13 @@ def evaluate_theme(theme: dict, tmap: dict, bench: list, series_cache: dict) -> 
                          "'이 논지가 데이터로 성립하는가'를 판정할 수 있다")
 
     def fred(sid):
+        """시계열 해석기.
+
+        FRED 한 곳에만 묶여 있으면 산업 고유 지표를 못 쓴다. 접두사로 소스를
+        고른다: 'eia:PET.WPULEUS3.W' 처럼. 접두사가 없으면 FRED(기존 설정 호환).
+        """
         if sid not in series_cache:
-            series_cache[sid] = fred_series(sid)
+            series_cache[sid] = _resolve_series(sid)
         return series_cache[sid]
 
     def fts(kw, start, end):
