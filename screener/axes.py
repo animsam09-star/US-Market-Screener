@@ -188,11 +188,22 @@ def _to_quarterly(monthly: list[tuple[date, float]]) -> list[tuple[tuple[int, in
 # ---------------------------------------------------------------- ② 공급
 
 def a2_supply(cfg: dict, fred) -> Signal:
-    """가동률만 보면 사양산업을 shortage 로 오독한다. 능력·생산·가동률을 같이 본다."""
+    """공급 비탄력의 증명은 세 가지가 함께 서야 한다.
+
+      ① 능력이 **장기간** 안 늘었다 (10년 CAGR — 1년 YoY 만 보면 놓친다)
+      ② 가동률이 이미 높다
+      ③ 수요가 오면 물량 대신 **가격**이 반응한다 (비탄력의 정의)
+
+    실측으로 잡은 결함: 전력기기는 능력이 10년간 연 -1.0% 씩 줄었고 가동률
+    92분위, 3년 가격 +10.2% vs 물량 +2.6%(4배)로 교과서적 비탄력인데,
+    1년 능력 +2.0% 하나 때문에 점수가 절반으로 깎이고 있었다. 10년 수축 뒤의
+    +2% 는 '증설'이 아니라 바닥에서의 미동이다.
+    """
     K = ("A2", "② 공급 비탄력")
     u_id, cap_id, ip_id = (cfg.get("capacity_utilization"),
                            cfg.get("capacity_index"),
                            cfg.get("industrial_production"))
+    ppi_id = cfg.get("ppi_output")
     if not u_id:
         return _nodata(*K, "가동률 시리즈 미지정")
     try:
@@ -205,13 +216,17 @@ def a2_supply(cfg: dict, fred) -> Signal:
     if rank_u is None:
         return _nodata(*K, "가동률 이력 부족")
 
-    a = p = None
+    # 능력: 1년 YoY + 장기(10년, 없으면 5년) CAGR
+    a1 = cap10 = None
     if cap_id:
         try:
             cs = fred(cap_id)
-            a = yoy(cs, freq_periods(cs))[-1][1]
+            g = yoy(cs, freq_periods(cs))
+            a1 = g[-1][1] if g else None
+            cap10 = _cagr(cs, 10) or _cagr(cs, 5)
         except Exception:
             pass
+    p = None
     if ip_id:
         try:
             ps = fred(ip_id)
@@ -220,33 +235,66 @@ def a2_supply(cfg: dict, fred) -> Signal:
             pass
 
     base = f"가동률 {cur_u:.1f}% (10년 {rank_u:.0f}분위)"
-    if a is not None:
-        base += f", 생산능력 YoY {a:+.1f}%"
+    if cap10 is not None:
+        base += f", 생산능력 10년 연 {cap10:+.1f}%"
+    if a1 is not None:
+        base += f" (최근 1년 {a1:+.1f}%)"
     if p is not None:
         base += f", 생산 YoY {p:+.1f}%"
 
-    # 기각 ①: 설비를 닫아서 가동률만 오른 사양산업
-    if a is not None and p is not None and a < 0 and p < 0:
+    # 기각 ①: 설비를 닫아서 가동률만 오른 사양산업 (제지가 이 경우)
+    if a1 is not None and p is not None and a1 < 0 and p < 0:
         return _reject(*K, "사양산업 — 생산능력과 생산이 동시에 감소. "
                            "수요가 늘어 가동률이 오른 게 아니라 설비를 닫아서 오른 것", base)
-    # 기각 ②: 증설이 이미 오는 중
-    if a is not None and a > 3.0:
-        return _reject(*K, f"증설 진행 중 — 생산능력 YoY {a:+.1f}% (>+3%). "
+    # 기각 ②: 증설이 실제로 밀려오는 중 (반도체 +17.7% 가 이 경우)
+    if a1 is not None and a1 > 3.0:
+        return _reject(*K, f"증설 진행 중 — 생산능력 YoY {a1:+.1f}% (>+3%). "
                            "공급이 이미 늘고 있어 부족이 해소된다", base)
 
-    sc = rank_u
-    if a is not None:
-        sc = rank_u * (1.0 if a <= 1.0 else max(0.3, 1.0 - (a - 1.0) / 2.0))
+    # 점수: 가동률 분위 × 장기 정체 계수.
+    # 장기 CAGR ≤ 0%/년이면 온전히, +2.5%/년 이상이면 크게 할인.
+    ev = _fred_pair(cap_id, u_id) if cap_id else FRED_URL.format(u_id)
+    lab = "생산능력·가동률 원계열↗" if cap_id else "근거"
+    if cap10 is not None:
+        factor = 1.0 - 0.65 * min(max(cap10 / 2.5, 0.0), 1.0)
+        sc = rank_u * factor
+    else:
+        sc = rank_u * 0.7          # 장기 능력을 모르면 그만큼 할인
 
-    if a is None or p is None:
+    # ③ 가격 반응: 3년 산출가격 vs 물량. 가격이 물량의 3배 이상 움직였고
+    # 절대로도 올랐다면, 물량이 못 늘어나 가격이 대신 반응한 것이다.
+    pq_note = ""
+    pq_ok = False
+    if ppi_id and ip_id:
+        try:
+            pp, qq = fred(ppi_id), fred(ip_id)
+            if len(pp) > 37 and len(qq) > 37:
+                dp = 100.0 * (pp[-1][1] / pp[-37][1] - 1.0)
+                dq = 100.0 * (qq[-1][1] / qq[-37][1] - 1.0)
+                pq_note = f", 3년 가격 {dp:+.1f}% vs 물량 {dq:+.1f}%"
+                if dp >= 5.0 and (dq <= 0.5 or dp / max(dq, 0.5) >= 3.0):
+                    pq_ok = True
+                    pq_note += " — 물량 대신 가격이 반응(비탄력의 정의)"
+        except Exception:
+            pass
+    base += pq_note
+
+    if a1 is None or p is None:
         return Signal(*K, sc, "unconfirmed", base,
                       "확증 실패: 생산능력·생산 지수 미지정 — 사양산업 여부를 가릴 수 없음",
-                      FRED_URL.format(u_id), cur_u)
-    if p <= 0:
+                      ev, cur_u, evidence_label=lab)
+    if p <= 0 and not pq_ok:
         return Signal(*K, sc, "unconfirmed", base,
                       f"확증 실패: 생산 YoY {p:+.1f}% — 수요 증가 증거 없음",
-                      FRED_URL.format(u_id), cur_u)
-    return Signal(*K, sc, "ok", base, "", FRED_URL.format(u_id), cur_u)
+                      ev, cur_u, evidence_label=lab)
+    return Signal(*K, sc, "ok", base, "", ev, cur_u, evidence_label=lab)
+
+
+def _cagr(series, years: int) -> float | None:
+    n = years * 12
+    if len(series) < n + 1 or series[-n - 1][1] <= 0:
+        return None
+    return 100.0 * ((series[-1][1] / series[-n - 1][1]) ** (1.0 / years) - 1.0)
 
 
 # ---------------------------------------------------------------- ③ 신기술

@@ -627,6 +627,65 @@ def f25_partial_thesis_disclosure():
     check("F25 둘 다 살아 있으면 '성립'", r2.thesis_status == "성립", r2.thesis_status)
 
 
+# ---------------------------------------------------------------- F26
+def f26_supply_long_run():
+    """공급 비탄력은 1년 능력 YoY 만으로 판정할 수 없다.
+
+    사고: 전력기기는 능력이 10년간 연 -1.0% 씩 줄었고 가동률 92분위,
+    3년 가격 +10.2% vs 물량 +2.6% 로 교과서적 비탄력인데, 1년 능력 +2.0%
+    하나 때문에 점수가 절반으로 깎였다. 10년 수축 뒤의 +2% 는 증설이 아니라
+    바닥에서의 미동이다. 사용자가 '공급 비탄력을 증명해봐'라고 지적했다.
+    """
+    from datetime import date as _d
+
+    from screener.axes import a2_supply
+
+    def series(vals_per_year):
+        out, i = [], 0
+        for y, v0, v1 in vals_per_year:
+            for m in range(12):
+                out.append((_d(y, m + 1, 1), v0 + (v1 - v0) * m / 11))
+                i += 1
+        return out
+
+    yrs = list(range(2013, 2027))
+    # 능력: 10년간 연 -1% 수축, 마지막 1년만 +2%
+    cap = []
+    v = 100.0
+    for y in yrs:
+        nxt = v * (1.02 if y == 2026 else 0.99)
+        cap += [(_d(y, m + 1, 1), v + (nxt - v) * m / 11) for m in range(12)]
+        v = nxt
+    # 가동률: 상승 추세(최근이 10년 최고권)
+    util = [(_d(2013 + i // 12, i % 12 + 1, 1), 70.0 + 15.0 * i / len(cap) )
+            for i in range(len(cap))]
+    # 생산: 완만한 증가 / 가격: 3년간 +10%
+    ip = [(d, 100.0 + 3.0 * i / len(cap)) for i, (d, _) in enumerate(cap)]
+    ppi = [(d, 100.0 * (1.10 ** (max(0, i - (len(cap) - 37)) / 36)))
+           for i, (d, _) in enumerate(cap)]
+    F = {"CAP": cap, "UTIL": util, "IP": ip, "PPI": ppi}
+
+    cfg = {"capacity_utilization": "UTIL", "capacity_index": "CAP",
+           "industrial_production": "IP", "ppi_output": "PPI"}
+    s = a2_supply(cfg, lambda k: F[k])
+    check("F26 10년 수축이면 1년 +2% 로 안 깎임", s.score is not None and s.score > 70,
+          f"{s.status} {s.score}")
+    check("F26 장기 CAGR 을 화면에 표시", "10년 연" in s.detail, s.detail[:60])
+    check("F26 가격 반응 표시", "가격" in s.detail, s.detail[-60:])
+
+    # 반대로 장기 확장(연 +7%)이면 낮거나 기각이어야 한다
+    cap2 = []
+    v = 100.0
+    for y in yrs:
+        nxt = v * 1.07
+        cap2 += [(_d(y, m + 1, 1), v + (nxt - v) * m / 11) for m in range(12)]
+        v = nxt
+    F2 = dict(F); F2["CAP"] = cap2
+    s2 = a2_supply(cfg, lambda k: F2[k])
+    check("F26 장기 확장이면 기각/저점수",
+          s2.status == "rejected" or (s2.score or 0) < 40, f"{s2.status} {s2.score}")
+
+
 def main() -> int:
     for fn in [f1_ytd_differencing, f2_no_economy_wide_fallback, f3_bea_result_shapes,
                f4_bea_final_demand_excluded, f5_naics_matching_direction,
@@ -639,7 +698,7 @@ def main() -> int:
                f19_key_name_aliases, f20_substitution_axis,
                f21_usaspending_incomplete_quarter, f22_budget_axis_precedence,
                f23_rebound_not_unpriced, f24_rebound_detection,
-               f25_partial_thesis_disclosure]:
+               f25_partial_thesis_disclosure, f26_supply_long_run]:
         try:
             fn()
         except Exception as e:
