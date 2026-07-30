@@ -226,7 +226,7 @@ def _card(r: ThemeResult, rank: int) -> str:
                     + ' <em>— 논지에 없던 힘이 작동 중일 수 있다</em></p>')
 
     return f"""
-<article class="card">
+<article class="card" id="t{rank}">
   <div class="chead">
     <div>
       <span class="rank">{rank}</span>
@@ -264,6 +264,24 @@ def _card(r: ThemeResult, rank: int) -> str:
   {_stock_table(r)}
   {notes}
 </article>"""
+
+
+# 추천 우선순위. 점수보다 이게 먼저다 — 되돌림 종목이 '지금은 아님'보다
+# 위에 오면 순서가 추천으로 읽히지 않는다.
+VERDICT_ORDER = {
+    "볼 만함": 0,      # 촉매도 있고 가격도 아직
+    "이미 반영": 1,    # 촉매는 맞지만 가격이 앞서감
+    "이유 약함": 2,    # 눌렸지만 오를 근거 부족
+    "지금은 아님": 3,
+    "되돌림": 4,       # 과열 조정 — 명시적으로 피할 것
+    "판정 불가": 5,
+}
+
+
+def priority(r: ThemeResult) -> tuple[int, float]:
+    """(판정 등급, -점수). 등급이 우선, 같은 등급 안에서 점수순."""
+    tag, _, _ = _verdict(r)
+    return (VERDICT_ORDER.get(tag, 9), -rank_score(r))
 
 
 def rank_score(r: ThemeResult) -> float:
@@ -397,6 +415,46 @@ def _stock_table(r: ThemeResult) -> str:
         '<p class="stknote">촉매는 테마 전체에 걸린다. 이 표는 같은 테마 안에서 '
         '<strong>아직 가격에 안 들어간 종목</strong>을 위로 올린 것이지, '
         '종목을 고르는 모델이 아니다.</p></details>')
+
+
+def _priority_list(ranked: list[ThemeResult]) -> str:
+    """추천 순서 — 스크롤 안 하고 한눈에.
+
+    등급별로 묶어 보여준다. 점수 순서만으로는 '무엇부터 봐야 하나'가 안 읽힌다.
+    """
+    groups: dict[str, list] = {}
+    for r in ranked:
+        tag, cls, text = _verdict(r)
+        groups.setdefault(tag, []).append((r, cls, text))
+
+    out = ['<div class="prio"><h2 class="prio-h">무엇부터 볼까</h2>']
+    n = 0
+    for tag in VERDICT_ORDER:
+        items = groups.get(tag)
+        if not items:
+            continue
+        cls = items[0][1]
+        note = {
+            "볼 만함": "촉매가 확인되고 가격도 아직 — 먼저 볼 것",
+            "이미 반영": "촉매는 맞지만 주가가 앞서갔다",
+            "이유 약함": "눌려 있으나 오를 근거가 부족하다",
+            "지금은 아님": "근거도 약하고 가격도 유리하지 않다",
+            "되돌림": "과열 조정 — 눌림을 저평가로 착각하기 쉬운 구간",
+            "판정 불가": "측정 데이터가 없다",
+        }.get(tag, "")
+        out.append(f'<div class="prio-g"><div class="prio-t">'
+                   f'<span class="vd {cls}">{_e(tag)}</span>'
+                   f'<span class="prio-n">{_e(note)}</span></div><ol class="prio-l">')
+        for r, _c, text in items:
+            n += 1
+            cs = "—" if r.catalyst_score is None else f"{r.catalyst_score:.0f}"
+            us = "—" if r.unpriced_score is None else f"{r.unpriced_score:.0f}"
+            out.append(f'<li><a href="#t{n}"><strong>{_e(r.name)}</strong></a>'
+                       f'<span class="prio-s">촉매 {cs} · 미반영 {us}</span>'
+                       f'<span class="prio-w">{_e(text)}</span></li>')
+        out.append("</ol></div>")
+    out.append("</div>")
+    return "".join(out)
 
 
 def _summary_table(results: list[ThemeResult]) -> str:
@@ -556,6 +614,20 @@ font-weight:400}
 .summary thead th{color:var(--text-secondary);font-size:11px;text-transform:uppercase;
 letter-spacing:.05em;font-weight:600}
 .summary .num{text-align:right;font-variant-numeric:tabular-nums}
+.prio{margin:18px 0 0;padding:18px 20px;background:var(--surface-1);
+border:1px solid var(--border);border-radius:12px}
+.prio-h{font-size:15px;margin:0 0 14px}
+.prio-g{margin-bottom:16px}
+.prio-g:last-child{margin-bottom:0}
+.prio-t{display:flex;align-items:center;gap:10px;margin-bottom:6px;flex-wrap:wrap}
+.prio-n{font-size:11.5px;color:var(--muted)}
+.prio-l{margin:0;padding-left:24px;font-size:13px}
+.prio-l li{margin-bottom:7px;line-height:1.5}
+.prio-l a{color:var(--text-primary);text-decoration:none;border-bottom:1px solid var(--grid)}
+.prio-l a:hover{border-bottom-color:var(--series-1)}
+.prio-s{display:inline-block;margin-left:9px;font-size:11px;color:var(--muted);
+font-variant-numeric:tabular-nums}
+.prio-w{display:block;font-size:12px;color:var(--text-secondary)}
 .rankrule{margin:6px 0 0;font-size:12px;color:var(--muted)}
 .rankrule code{background:var(--surface-1);padding:1px 5px;border-radius:4px;
 border:1px solid var(--border);font-size:11.5px}
@@ -585,7 +657,7 @@ padding:6px 11px;cursor:pointer;font:inherit;font-size:12px}
 
 
 def build_html(results: list[ThemeResult], *, benchmark: str = "SPY") -> str:
-    ranked = sorted(results, key=lambda r: -rank_score(r))
+    ranked = sorted(results, key=priority)
     now = datetime.now().strftime("%Y-%m-%d %H:%M")
     n_target = sum(1 for r in ranked
                    if (r.catalyst_score or 0) >= 50 and (r.unpriced_score or 0) >= 50)
@@ -629,6 +701,8 @@ r.dataset.theme=r.dataset.theme==='dark'?'light':'dark'">라이트/다크</butto
 벤치마크 {_e(benchmark)} · 전 지표 무료 공공데이터(FRED·SEC·Federal Register·Yahoo)</p>
 
 {warn}
+{_priority_list(ranked)}
+
 <p class="rankrule">정렬 기준: <code>√(촉매 × 미반영) × 신뢰도 × 게이트</code>
  — <strong>기하평균이라 한쪽이 0이면 총점도 0</strong>이다. 촉매가 죽은 테마는 아무리
  눌려 있어도 후보가 아니다(싼 데는 이유가 있을 수 있다). 신뢰도는 살아있는 촉매 축의
