@@ -209,7 +209,11 @@ jobs:
                 echo "- 아이디는 \`screener\`, 비밀번호는 시크릿 값"
               fi
               echo "- 주소: https://us-market-screener.pages.dev"
-              echo "- 산출물 검증: 공급축 신형 표시 $(grep -c '10년 연' out/screener.html || echo 0)곳, EIA 주간 $(grep -c '주간' out/screener.html || echo 0)곳"
+              echo "- 산출물 검증: 공급축 신형 $(grep -c '10년 연' out/screener.html || true)곳 / 조회실패 $(grep -c '조회 실패' out/screener.html || true)곳 / 차단판정 $(grep -c '접근 불가로 판정' out/screener.html || true)곳"
+              echo '- 전력기기 ②축 실제 내용:'
+              python -c "import re,io;h=io.open('out/screener.html',encoding='utf-8').read();i=h.find('전력기기');m=re.search(r'② 공급 비탄력.{0,900}?det\\">([^<]{0,180})',h[i:i+12000],re.S);print('  ', (m.group(1) if m else '추출 실패'))"
+              echo '- 정유 ②축 실제 내용:'
+              python -c "import re,io;h=io.open('out/screener.html',encoding='utf-8').read();i=h.find('정유');m=re.search(r'② 공급 비탄력.{0,900}?(det\\">[^<]{0,180}|why\\">[^<]{0,180})',h[i:i+14000],re.S);print('  ', (m.group(1) if m else '추출 실패'))"
             fi
           } >> reports/run_status.md
           git config user.name  "github-actions[bot]"
