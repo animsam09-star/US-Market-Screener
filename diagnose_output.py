@@ -37,6 +37,22 @@ def main() -> int:
         m = re.search(r'② 공급 비탄력.{0,900}?(?:det">|why">)([^<]{0,160})', seg, re.S)
         print(f"- {nm} ② 실제: {m.group(1).strip() if m else '추출 실패'}")
 
+    # 실패 원문 샘플 — 68곳의 '조회 실패' 중 회로차단 메시지가 아닌 원인
+    # (첫 4회의 진짜 오류)를 몇 개 보여준다. 429/403/타임아웃을 여기서 가린다.
+    fails = re.findall(r'조회 실패: ([^<]{10,150})', h)
+    orig = [f for f in fails if "접근 불가로 판정" not in f]
+    seen: list[str] = []
+    for f in orig:
+        k = f[:60]
+        if k not in seen:
+            seen.append(k)
+        if len(seen) >= 3:
+            break
+    for k in seen:
+        print(f"- 실패 샘플: {k}")
+    if fails and not seen:
+        print("- 실패 샘플: 전부 회로차단 후속 (원인은 첫 4회 — 산출물에 미기록)")
+
     # FRED 가 이 환경에서 실시간으로 닿는지 — 캐시 우회(ttl 0)
     try:
         from screener.net import fetch
