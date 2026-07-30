@@ -44,7 +44,11 @@ themes:
     thesis: 데이터센터/전동화로 전력 수요는 뛰는데 변압기·개폐기 증설은 리드타임이 수년
     catalysts: [공급, 낙수]
     lead_time: 12~24M
-    tickers: [ETN, PWR, POWL, HUBB, AZZ, NVT, ATKR, VRT]
+    # 체인: 기기(GEV 터빈·그리드솔루션 / ETN·HUBB 배전 / POWL 개폐기)
+    #      → 부자재(AZZ 도금 / ATKR 전선관 / NVT 인클로저)
+    #      → 시공 EPC(PWR / MTZ 송전선 건설)
+    # VRT 는 데이터센터 열관리 테마로 일원화(중복 제거)
+    tickers: [GEV, ETN, HUBB, POWL, AZZ, NVT, ATKR, PWR, MTZ]
     customers:
       tickers: [NEE, DUK, SO, AEP, D, EXC, EQIX, DLR]
       series: IPUTIL
@@ -67,7 +71,10 @@ themes:
     thesis: 미세화 한계로 가치가 전공정에서 후공정/패키징으로 이동
     catalysts: [신기술, 낙수]
     lead_time: 6~18M
-    tickers: [AMKR, ONTO, CAMT, KLIC, ACLS, COHU, FORM]
+    # 체인: OSAT 조립(AMKR) → 테스트(TER·COHU) → 계측·검사(ONTO·CAMT)
+    #      → 본딩 장비(KLIC) → 프로브카드(FORM)
+    # ACLS 제거 — 이온주입은 전공정 장비라 후공정 테마에 오분류였다
+    tickers: [AMKR, TER, ONTO, CAMT, KLIC, COHU, FORM]
     customers:
       tickers: [NVDA, AMD, AVGO, QCOM, TXN, ADI, MU]
       series: IPG3344S
@@ -114,7 +121,10 @@ themes:
     thesis: 랙 전력밀도 상승으로 공랭이 한계에 도달 → 액침·직접칩냉각으로 기술 전환
     catalysts: [신기술, 낙수]
     lead_time: 6~18M
-    tickers: [VRT, MOD, SPXC, AAON, TT, CARR]
+    # 체인: 냉각 장비(VRT 전력·열관리 / MOD 액침·칠러 / AAON 공조)
+    #      → 부품(SPXC) → 대형 공조(TT) → 기계설비 시공(FIX)
+    # CARR 제거 — 주택용 비중이 커서 DC 순도가 낮다
+    tickers: [VRT, MOD, SPXC, AAON, TT, FIX]
     customers:
       tickers: [MSFT, AMZN, GOOGL, META, EQIX, DLR]
       series: IPG3341S
@@ -157,6 +167,10 @@ themes:
     thesis: 각국 원전 회귀 + 러시아산 농축우라늄 배제로 서방 농축·변환 능력이 병목
     catalysts: [정책, 병목]
     lead_time: 12~36M
+    # 체인: 채굴(CCJ 세계 2위 / UEC·DNN·NXE 미주 개발)
+    #      → 변환·농축(LEU — 미국 유일 NRC 승인 HALEU, 2026-01 DOE 9억$ 수주)
+    #      → 부품·군용로(BWXT)
+    # SMR 개발사(OKLO·SMR·NNE)는 매출 전 단계라 재무 집계를 오염시켜 제외
     tickers: [CCJ, LEU, UEC, DNN, NXE, BWXT]
     customers:
       tickers: [CEG, VST, NEE, DUK, SO, EXC]
@@ -171,7 +185,10 @@ themes:
     thesis: 관세·리쇼어링 수요 대비 국내 증설 제한. 캐펙스 사이클 바닥 여부가 관건
     catalysts: [캐펙스, 정책]
     lead_time: 6~18M
-    tickers: [NUE, STLD, CMC, X, CLF]
+    # 체인: 전기로(NUE·STLD·CMC) → 고로(CLF) → 특수강·합금(CRS·ATI)
+    #      → 유통(RS)
+    # X 제거 — 2025 Nippon Steel 피인수로 상폐(CIK 조회로 확인)
+    tickers: [NUE, STLD, CMC, CLF, CRS, ATI, RS]
     customers:
       tickers: [CAT, DE, PCAR, GM, F, WHR]
       series: IPG332S
@@ -264,7 +281,8 @@ themes:
     thesis: 착공은 눌려 있고 목재·용지 공급도 제약 — 수요가 돌면 즉시 병목
     catalysts: [재고, 공급]
     lead_time: 6~18M
-    tickers: [DHI, LEN, PHM, NVR, TOL, KBH, MTH]
+    # 체인: 빌더(DHI·LEN·PHM·NVR·TOL·KBH·MTH) → 자재 유통(BLDR)
+    tickers: [DHI, LEN, PHM, NVR, TOL, KBH, MTH, BLDR]
     customers: {}              # 최종 고객이 가계라 상장 고객군이 없다
     edgar_keywords: ["housing affordability", "spec inventory", "buydown incentive"]
     fedreg_terms: ["mortgage", "housing finance"]
@@ -356,7 +374,10 @@ themes:
     thesis: 유가는 버티는데 시추 활동은 바닥 — 셰일 재고정(inventory) 소진으로 재가동 필요
     catalysts: [공급, 낙수]
     lead_time: 6~18M
-    tickers: [SLB, HAL, BKR, WFRD, NOV, CHX]
+    # 체인: 통합 서비스(SLB·HAL·BKR) → 장비(NOV·WFRD)
+    #      → 시추·완결(LBRT 프랙 / PTEN·HP 리그)
+    # CHX 제거 — 2025 SLB 피인수로 상폐(CIK 조회로 확인)
+    tickers: [SLB, HAL, BKR, WFRD, NOV, LBRT, PTEN, HP]
     customers:
       tickers: [XOM, CVX, COP, EOG, DVN, FANG]
       series: IPMINE
