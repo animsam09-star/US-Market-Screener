@@ -340,6 +340,16 @@ def _verdict(r: ThemeResult) -> tuple[str, str, str]:
         price = f"주가는 이미 시장보다 {rel:.0f}%p 앞서 올랐습니다"
 
     noun = AXIS_NOUN.get(tops[0].key, "촉매")
+
+    # 되돌림은 별도로 경고한다. 드로다운이 크다는 것만으로 '싸다'고 하면
+    # 올랐다 빠지는 것을 저평가로 착각한다.
+    if r.rebound:
+        u4 = next((x for x in r.unpriced if x.key == "U4"), None)
+        r3 = u4.raw if u4 and u4.raw is not None else None
+        extra = f"3년간 시장을 {r3:+.0f}%p 앞선 뒤 고점에서 내려오는 중" if r3 is not None             else "이미 크게 오른 뒤 되돌리는 중"
+        return ("되돌림", "v-bad",
+                f"{extra}입니다. 눌려 보이지만 미반영이 아니라 과열 조정입니다.")
+
     if strong and cheap:
         return ("볼 만함", "v-good", f"{why}. 그런데 {price}.")
     if strong and not cheap:
@@ -514,6 +524,7 @@ border-radius:6px;border:1px solid currentColor;margin-right:9px;vertical-align:
 .v-good{color:var(--good)}
 .v-warn{color:var(--warning)}
 .v-na{color:var(--muted)}
+.v-bad{color:var(--critical)}
 .star{color:var(--series-2);margin-right:3px}
 .detail{margin-top:10px}
 .detail>summary{cursor:pointer;font-size:12px;color:var(--text-secondary);
@@ -526,6 +537,7 @@ border:1px solid currentColor}
 .v-warn{color:var(--warning)}
 .v-bad{color:var(--critical)}
 .v-na{color:var(--muted)}
+.v-bad{color:var(--critical)}
 .claim-list{color:var(--text-secondary)}
 .incidental{margin:0 0 10px;font-size:11.5px;color:var(--muted)}
 .incidental em{font-style:normal}

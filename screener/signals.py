@@ -41,6 +41,7 @@ class ThemeResult:
     claimed: set = field(default_factory=set)      # 테마가 선언한 촉매 축 키
     unknown_catalysts: list = field(default_factory=list)
     stocks: list = field(default_factory=list)     # 종목별 미반영 내역
+    rebound: bool = False                          # 과열 되돌림 여부
 
     @property
     def claimed_axes(self) -> list[Signal]:
@@ -91,7 +92,16 @@ class ThemeResult:
 
     @property
     def unpriced_score(self) -> float | None:
-        return mean([s.score for s in self.unpriced])
+        """미반영 점수.
+
+        되돌림(3년간 크게 오른 뒤 최근 고점에서 하락 중)이면 절반으로 깎는다.
+        드로다운이 크다는 것만으로 '미반영'이라고 하면, 올랐다 빠지는 것을
+        저평가로 착각한다 — 실측에서 원자력이 그 경우였다(3년 +102%p).
+        """
+        base = mean([s.score for s in self.unpriced])
+        if base is None:
+            return None
+        return base * 0.5 if self.rebound else base
 
     @property
     def top_axes(self) -> list[Signal]:
@@ -143,12 +153,42 @@ def u3_price_unreacted(px: dict) -> Signal:
                   raw=rel)
 
 
-def u4_drawdown(px: dict) -> Signal:
+def u4_long_term(px: dict) -> Signal:
+    """장기(3년) 미반영 — '올랐다 빠지는 것'을 걸러내는 핵심 축.
+
+    드로다운만 보면 안 된다. +200% 오른 뒤 -35% 빠진 것도 드로다운이 크다.
+    실측: 원자력은 12개월 상대수익률 -9%p 로 눌려 보이지만 3년 상대수익률이
+    +102%p 다 — 이미 크게 오른 것의 되돌림이지 미반영이 아니다.
+    반면 화학은 3년 -101%p, 고점이 1,513일 전이다. 그게 진짜 눌린 것이다.
+    """
+    rel3 = px.get("rel_3y")
+    if rel3 is None:
+        return Signal("U4", "장기 미반영(3년)", None, "nodata", "", "3년 주가 이력 부족")
     dd = px.get("drawdown")
-    if dd is None:
-        return Signal("U4", "고점 대비 눌림", None, "nodata", "", "주가 이력 부족")
-    return Signal("U4", "고점 대비 눌림", scale(dd, 0, 35), "ok",
-                  f"52주 고점 대비 {-dd:.1f}%", raw=dd)
+    detail = f"3년 상대수익률 {rel3:+.0f}%p"
+    if dd is not None:
+        detail += f", 52주 고점 대비 {-dd:.1f}%"
+    return Signal("U4", "장기 미반영(3년)", scale(-rel3, -60, 60), "ok", detail, raw=rel3)
+
+
+def u5_basing(px: dict) -> Signal:
+    """바닥 다지기 — 떨어지는 칼날과 다져진 바닥을 가른다.
+
+    고점이 오래됐고 200일선 근처/위면 눌림이 소화된 것이다.
+    고점이 최근이고 200일선을 크게 밑돌면 아직 내려가는 중이다.
+    """
+    age, ma = px.get("peak_age_days"), px.get("vs_ma200")
+    if age is None or ma is None:
+        return Signal("U5", "바닥 다지기", None, "nodata", "", "주가 이력 부족")
+    # 고점 경과 250일 이상이면 만점권, 60일 미만이면 0점
+    age_s = scale(age, 60, 400) or 0.0
+    # 200일선 대비 -15% 이하면 0점, 0% 이상이면 만점권
+    ma_s = scale(ma, -15, 3) or 0.0
+    sc = 0.6 * age_s + 0.4 * ma_s
+    state = ("바닥 다지는 중" if sc >= 55 else
+             "아직 내려가는 중" if sc < 30 else "중간")
+    return Signal("U5", "바닥 다지기", sc, "ok",
+                  f"52주 고점 {age}일 전, 200일선 대비 {ma:+.1f}% — {state}", raw=sc)
 
 
 # ================================================================ 재무 집계
@@ -312,16 +352,39 @@ def price_stats(tickers: list[str], prices: dict, bench: list) -> dict:
     bases = [m[days[0]] for m in maps]
     idx = [(d, statistics.fmean([m[d] / b for m, b in zip(maps, bases)])) for d in days]
 
-    back = min(len(idx), 252)
-    abs_12m = 100.0 * (idx[-1][1] / idx[-back][1] - 1.0)
-    dd = 100.0 * (1.0 - idx[-1][1] / max(v for _, v in idx[-252:]))
+    def rel_over(n: int) -> tuple[float | None, float | None]:
+        """n 거래일 절대·상대 수익률."""
+        if len(idx) < n + 5:
+            return None, None
+        a = 100.0 * (idx[-1][1] / idx[-n][1] - 1.0)
+        if not bench or len(bench) < n + 5:
+            return a, None
+        bn, bt = _price_on(bench, days[-1]), _price_on(bench, days[-n])
+        if not (bn and bt):
+            return a, None
+        return a, a - 100.0 * (bn / bt - 1.0)
 
-    rel = None
-    if bench and len(bench) > 260:
-        bn, bt = _price_on(bench, days[-1]), _price_on(bench, days[-back])
-        if bn and bt:
-            rel = abs_12m - 100.0 * (bn / bt - 1.0)
-    return {"abs_12m": abs_12m, "rel_12m": rel, "drawdown": dd, "index": idx}
+    abs_12m, rel_12m = rel_over(min(len(idx), 252))
+    _, rel_3y = rel_over(756)
+
+    # 52주 고점과 그 이후 경과일. '언제 고점이었나'가 눌림의 성격을 가른다 —
+    # 최근 고점은 방금 꺾인 것, 오래된 고점은 소화된 것이다.
+    win = idx[-252:] if len(idx) >= 252 else idx
+    pk = max(range(len(win)), key=lambda i: win[i][1])
+    dd = 100.0 * (1.0 - idx[-1][1] / win[pk][1])
+    peak_age = (idx[-1][0] - win[pk][0]).days
+
+    # 200일 이동평균 대비 위치. 크게 밑돌면 하락 추세가 진행 중이다.
+    ma200 = statistics.fmean([v for _, v in idx[-200:]]) if len(idx) >= 200 else None
+    vs_ma = (100.0 * (idx[-1][1] / ma200 - 1.0)) if ma200 else None
+
+    # 되돌림 판정: 3년간 크게 초과 상승했는데 고점이 아직 최근이면
+    # 그건 미반영이 아니라 과열의 되돌림이다.
+    rebound = bool(rel_3y is not None and rel_3y > 60 and peak_age < 250)
+
+    return {"abs_12m": abs_12m, "rel_12m": rel_12m, "rel_3y": rel_3y,
+            "drawdown": dd, "peak_age_days": peak_age, "vs_ma200": vs_ma,
+            "rebound": rebound, "index": idx}
 
 
 # ================================================================ 시계열 해석
@@ -422,7 +485,8 @@ def evaluate_theme(theme: dict, tmap: dict, bench: list, series_cache: dict) -> 
         axes.a10_substitution(fc, fred),
     ]
     res.unpriced = [u1_fundamental_inflection(group), u2_valuation_gap(group),
-                    u3_price_unreacted(px), u4_drawdown(px)]
+                    u3_price_unreacted(px), u4_long_term(px), u5_basing(px)]
+    res.rebound = bool(px.get("rebound"))
     res.series = {
         "price_index": px.get("index", [])[-500:],
         "rev_yoy": group.get("rev_yoy_series", []),

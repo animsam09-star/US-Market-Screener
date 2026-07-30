@@ -535,6 +535,69 @@ def f22_budget_axis_precedence():
           a5_budget({"usaspending": {"agency": "Department of Defense"}}, {}) is not None)
 
 
+# ---------------------------------------------------------------- F23
+def f23_rebound_not_unpriced():
+    """올랐다 빠지는 것을 '미반영'으로 착각하면 안 된다.
+
+    사고: 고점 대비 눌림 축이 드로다운이 클수록 점수를 줬다. +200% 오른 뒤
+    -35% 빠진 것도 드로다운이 크다. 실측에서 원자력이 12개월 상대수익률
+    -9%p 로 눌려 보였지만 3년 상대수익률은 +102%p 였고 200일선을 26% 밑돌고
+    있었다 — 과열 되돌림인데 미반영 90점(최고)을 받았다.
+    """
+    from screener.signals import ThemeResult, u4_long_term, u5_basing
+
+    # 되돌림: 3년 크게 초과 + 고점이 최근
+    px_rebound = {"rel_3y": 102.0, "drawdown": 26.0,
+                  "peak_age_days": 182, "vs_ma200": -25.6, "rebound": True}
+    # 진짜 눌림: 3년 마이너스 + 고점이 오래됨 + 200일선 위
+    px_real = {"rel_3y": -101.0, "drawdown": 12.0,
+               "peak_age_days": 1513, "vs_ma200": 0.8, "rebound": False}
+
+    a = u4_long_term(px_rebound)
+    b = u4_long_term(px_real)
+    check("F23 장기축: 되돌림은 낮게", a.score < 20, f"{a.score:.0f}")
+    check("F23 장기축: 진짜 눌림은 높게", b.score > 80, f"{b.score:.0f}")
+
+    c = u5_basing(px_rebound)
+    d = u5_basing(px_real)
+    check("F23 바닥축: 내려가는 중은 낮게", c.score < 40, f"{c.score:.0f}")
+    check("F23 바닥축: 다져진 바닥은 높게", d.score > 70, f"{d.score:.0f}")
+    check("F23 상태를 말로 표시", "내려가는 중" in c.detail, c.detail[-24:])
+
+    # 되돌림 플래그가 미반영 점수를 깎는지
+    from screener.axes import Signal
+    r1 = ThemeResult(name="a", thesis="", tickers=["X"], rebound=True)
+    r2 = ThemeResult(name="b", thesis="", tickers=["X"], rebound=False)
+    for r in (r1, r2):
+        r.unpriced = [Signal("U1", "x", 80, "ok", "d"), Signal("U3", "y", 80, "ok", "d")]
+    check("F23 되돌림이면 미반영 절반", abs(r1.unpriced_score - 40) < 0.01,
+          f"{r1.unpriced_score}")
+    check("F23 아니면 그대로", abs(r2.unpriced_score - 80) < 0.01, f"{r2.unpriced_score}")
+
+
+# ---------------------------------------------------------------- F24
+def f24_rebound_detection():
+    """되돌림 판정 조건: 3년 초과 상승 + 최근 고점."""
+    from datetime import date as _d
+    from datetime import timedelta as _td
+
+    from screener.signals import price_stats
+
+    # 3년간 우상향 후 최근 급락 (되돌림), 벤치는 평평
+    base = _d(2020, 1, 1)
+    days = [base + _td(days=i) for i in range(1100)]
+    up = [(d, 100.0 + i * 0.25) for i, d in enumerate(days[:1000])]
+    up += [(d, up[-1][1] * (1 - 0.0012 * (i + 1))) for i, d in enumerate(days[1000:])]
+    bench = [(d, 100.0) for d in days]
+    st = price_stats(["X"], {"X": up}, bench)
+    check("F24 3년 상대수익률 계산", st.get("rel_3y") is not None, str(st.get("rel_3y")))
+    check("F24 되돌림으로 판정", st.get("rebound") is True,
+          f"rel3y={st.get('rel_3y'):.0f} peak_age={st.get('peak_age_days')}")
+    check("F24 고점 경과일 산출", 0 < st["peak_age_days"] < 250,
+          str(st["peak_age_days"]))
+    check("F24 200일선 대비 산출", st.get("vs_ma200") is not None)
+
+
 def main() -> int:
     for fn in [f1_ytd_differencing, f2_no_economy_wide_fallback, f3_bea_result_shapes,
                f4_bea_final_demand_excluded, f5_naics_matching_direction,
@@ -545,7 +608,8 @@ def main() -> int:
                f15_notfound_not_host_failure, f16_company_names,
                f17_source_prefix_routing, f18_eia_response_shape,
                f19_key_name_aliases, f20_substitution_axis,
-               f21_usaspending_incomplete_quarter, f22_budget_axis_precedence]:
+               f21_usaspending_incomplete_quarter, f22_budget_axis_precedence,
+               f23_rebound_not_unpriced, f24_rebound_detection]:
         try:
             fn()
         except Exception as e:
