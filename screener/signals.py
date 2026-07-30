@@ -88,6 +88,12 @@ class ThemeResult:
             return "성립하나 신호없음"
         if len(live) < len(self.claimed_axes):
             return "일부확인불가"
+        # 축 하나가 점수 전부를 만드는 경우를 '성립'이라 부르면 과대포장이다.
+        # 방산이 그랬다: 정책 92 / 병목 0.4 인데 평균 46으로 '논지 성립'이 됐다.
+        # 병목 0.4 는 수주잔고가 10년 최저라는 뜻 — 논지 절반을 데이터가 반박한다.
+        dead = [s for s in live if (s.effective or 0) < 10]
+        if dead and sc >= 25:
+            return "일부만 작동"
         return "성립" if all(s.status == "ok" for s in live) else "미확증"
 
     @property

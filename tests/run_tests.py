@@ -598,6 +598,35 @@ def f24_rebound_detection():
     check("F24 200일선 대비 산출", st.get("vs_ma200") is not None)
 
 
+# ---------------------------------------------------------------- F25
+def f25_partial_thesis_disclosure():
+    """축 하나가 점수 전부를 만들면 '성립'이라 부르지 않는다.
+
+    사고: 방산이 정책 92 / 병목 0.4 로 평균 46, '논지 성립·볼 만함'이 됐다.
+    병목 0.4 는 수주잔고가 10년 최저라는 뜻 — 논지 절반을 데이터가 반박하는데
+    화면에는 깨끗한 '성립'으로 보였다. 사용자가 이를 지적했다.
+    """
+    from screener.axes import Signal, resolve_catalysts
+    from screener.signals import ThemeResult
+
+    r = ThemeResult(name="t", thesis="", tickers=["A"])
+    r.claimed, _ = resolve_catalysts(["정책", "병목"])
+    r.catalyst = [
+        Signal("A5", "⑤ 정책", 92, "ok", "d"),
+        Signal("A9", "⑨ 병목", 0.4, "ok", "d"),
+    ]
+    check("F25 한 축이 죽어 있으면 '일부만 작동'",
+          r.thesis_status == "일부만 작동", r.thesis_status)
+
+    r2 = ThemeResult(name="t2", thesis="", tickers=["A"])
+    r2.claimed, _ = resolve_catalysts(["정책", "재고"])
+    r2.catalyst = [
+        Signal("A5", "⑤ 정책", 92, "ok", "d"),
+        Signal("A8", "⑧ 재고", 85, "ok", "d"),
+    ]
+    check("F25 둘 다 살아 있으면 '성립'", r2.thesis_status == "성립", r2.thesis_status)
+
+
 def main() -> int:
     for fn in [f1_ytd_differencing, f2_no_economy_wide_fallback, f3_bea_result_shapes,
                f4_bea_final_demand_excluded, f5_naics_matching_direction,
@@ -609,7 +638,8 @@ def main() -> int:
                f17_source_prefix_routing, f18_eia_response_shape,
                f19_key_name_aliases, f20_substitution_axis,
                f21_usaspending_incomplete_quarter, f22_budget_axis_precedence,
-               f23_rebound_not_unpriced, f24_rebound_detection]:
+               f23_rebound_not_unpriced, f24_rebound_detection,
+               f25_partial_thesis_disclosure]:
         try:
             fn()
         except Exception as e:

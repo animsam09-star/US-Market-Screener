@@ -210,6 +210,7 @@ def _card(r: ThemeResult, rank: int) -> str:
     # 논지 성립 여부 — 이 도구의 가장 중요한 출력.
     # "무엇이 마침 높나"가 아니라 "내가 말한 이유가 데이터로 서나"를 답한다.
     TH = {"성립": ("good", "논지 성립"), "미확증": ("warn", "논지 미확증"),
+          "일부만 작동": ("warn", "논지 일부만 작동"),
           "일부기각": ("bad", "논지 일부 기각"), "일부확인불가": ("warn", "논지 일부 확인불가"),
           "성립하나 신호없음": ("warn", "반증 안 됐으나 신호 없음"),
           "미성립": ("bad", "논지 미성립"), "미선언": ("na", "촉매 미선언")}
@@ -359,6 +360,15 @@ def _verdict(r: ThemeResult) -> tuple[str, str, str]:
 
     noun = AXIS_NOUN.get(tops[0].key, "촉매")
 
+    # 주장 축 중 신호가 사실상 죽은 것이 있으면 결론에 밝힌다.
+    # 축 하나가 점수 전부를 만들면서 '볼 만함'으로 깨끗하게 표시되면 과대포장이다.
+    live_axes = [s for s in r.claimed_axes if s.effective is not None]
+    dead_axes = [s for s in live_axes if (s.effective or 0) < 10]
+    partial = ""
+    if dead_axes and len(live_axes) > 1:
+        names = "·".join(AXIS_NOUN.get(s.key, s.label) for s in dead_axes)
+        partial = f" 단, 주장 축 {len(live_axes)}개 중 {names}은(는) 신호가 없습니다."
+
     # 되돌림은 별도로 경고한다. 드로다운이 크다는 것만으로 '싸다'고 하면
     # 올랐다 빠지는 것을 저평가로 착각한다.
     if r.rebound:
@@ -369,9 +379,9 @@ def _verdict(r: ThemeResult) -> tuple[str, str, str]:
                 f"{extra}입니다. 눌려 보이지만 미반영이 아니라 과열 조정입니다.")
 
     if strong and cheap:
-        return ("볼 만함", "v-good", f"{why}. 그런데 {price}.")
+        return ("볼 만함", "v-good", f"{why}. 그런데 {price}.{partial}")
     if strong and not cheap:
-        return ("이미 반영", "v-warn", f"{why}. 다만 {price}.")
+        return ("이미 반영", "v-warn", f"{why}. 다만 {price}.{partial}")
     if not strong and cheap:
         return ("이유 약함", "v-warn",
                 f"많이 눌려 있지만 오를 이유가 약합니다. "
