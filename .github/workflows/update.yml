@@ -123,6 +123,7 @@ jobs:
         env:
           BEA_API_KEY: ${{ secrets.BEA_API_KEY }}
           EIA_API_KEY: ${{ secrets.EIA_API_KEY }}
+          EIA_API: ${{ secrets.EIA_API }}
           # 시크릿 이름은 사람이 붙인다. keys.py 가 _KEY 접미사 유무를 함께 보므로
           # 아래 두 이름 중 실제로 등록된 쪽이 잡힌다.
           CENSUS_API: ${{ secrets.CENSUS_API }}
@@ -208,6 +209,7 @@ jobs:
                 echo "- 아이디는 \`screener\`, 비밀번호는 시크릿 값"
               fi
               echo "- 주소: https://us-market-screener.pages.dev"
+              echo "- 산출물 검증: 공급축 신형 표시 $(grep -c '10년 연' out/screener.html || echo 0)곳, EIA 주간 $(grep -c '주간' out/screener.html || echo 0)곳"
             fi
           } >> reports/run_status.md
           git config user.name  "github-actions[bot]"
