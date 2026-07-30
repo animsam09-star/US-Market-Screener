@@ -35,7 +35,9 @@ HEADERS = {"User-Agent": UA, "Accept-Encoding": "gzip, deflate"}
 
 _last_call: dict[str, float] = {}
 # 호스트별 최소 호출 간격(초). SEC 는 10 req/s 제한이 있다.
-_MIN_INTERVAL = {"data.sec.gov": 0.12, "www.sec.gov": 0.12, "efts.sec.gov": 0.15}
+_MIN_INTERVAL = {"data.sec.gov": 0.12, "www.sec.gov": 0.12, "efts.sec.gov": 0.15,
+                 # 러너(단일 IP 버스트)에서 FRED 가 레이트리밋을 걸었다 — run 39 실측
+                 "fred.stlouisfed.org": 0.45}
 
 
 class FetchError(RuntimeError):
@@ -123,6 +125,12 @@ def fetch(url: str, *, ttl_hours: float = 24.0, json_body: object | None = None,
                 # 존재하지 않는 시리즈를 몇 개 조회했다고 FRED 전체를 죽은 것으로
                 # 판정하면 그 뒤 모든 조회가 막힌다(실제로 그랬다).
                 raise NotFound(f"404 {url}")
+            if r.status_code == 429:
+                # 레이트리밋 — 죽은 게 아니다. 회로차단에 세면 이후 전 호출이
+                # 죽는다(run 39: FRED 차단 판정 → 조회실패 68곳). 길게 쉬고 재시도.
+                time.sleep(4.0 * (attempt + 1))
+                last = FetchError(f"429 레이트리밋 {url}")
+                continue
             if r.status_code in (403, 451):
                 # 정책 차단이지 일시 오류가 아니다. 재시도해도 안 열린다.
                 # SEC 는 데이터센터 IP(클라우드 러너)에 403 을 내는 일이 있다.

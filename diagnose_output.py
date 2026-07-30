@@ -32,7 +32,7 @@ def main() -> int:
           f"EIA키없음 {h.count('EIA 키 없음')}곳")
 
     for nm in ("전력기기", "정유"):
-        i = h.find(nm)
+        i = h.find("<h3>" + nm)          # 우선순위 목록이 아니라 카드 본문에서
         seg = h[i:i + 14000] if i >= 0 else ""
         m = re.search(r'② 공급 비탄력.{0,900}?(?:det">|why">)([^<]{0,160})', seg, re.S)
         print(f"- {nm} ② 실제: {m.group(1).strip() if m else '추출 실패'}")
@@ -46,6 +46,11 @@ def main() -> int:
         print(f"- FRED 실시간: OK ({len(lines) - 1}행, 머리={lines[0][:36]!r})")
     except Exception as e:
         print(f"- FRED 실시간: 실패 — {str(e)[:110]}")
+    try:
+        from screener.net import host_status
+        print(f"- 차단된 호스트: {host_status() or '없음'}")
+    except Exception:
+        pass
     return 0
 
 
