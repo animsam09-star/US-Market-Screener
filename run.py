@@ -1,4 +1,4 @@
-"""미국 섹터 스크리너 — 실행 진입점.
+"""미국 섹터 스크리너 — 실행 진입점.  # build-marker: fred-snapshot
 
     python run.py                # 전체 테마 실행 후 대시보드 열기
     python run.py --no-open      # 브라우저 열지 않음
