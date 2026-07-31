@@ -41,9 +41,11 @@ _MIN_INTERVAL = {"data.sec.gov": 0.12, "www.sec.gov": 0.12, "efts.sec.gov": 0.15
                  "fred.stlouisfed.org": 0.6}
 
 # 호스트별 정책: (재시도 횟수, 백오프 배수(초), 차단 판정 임계)
-# FRED 는 일시 스로틀이 잦으므로 끈질기게 기다렸다 다시 가고, 차단 판정도 늦춘다.
+# FRED 에 끈질긴 재시도(5회×백오프)를 걸었더니 스냅샷 폴백과 겹쳐 실패 1건당
+# 30초를 태웠고, 러너 8분 상한을 넘겨 실행이 통째로 죽었다(run 45).
+# 스냅샷이 있는 지금은 빨리 포기하고 폴백하는 것이 맞다.
 _HOST_PROFILE = {
-    "fred.stlouisfed.org": (5, 3.0, 12),
+    "fred.stlouisfed.org": (2, 1.0, 4),
 }
 
 
