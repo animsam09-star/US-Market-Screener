@@ -36,8 +36,15 @@ HEADERS = {"User-Agent": UA, "Accept-Encoding": "gzip, deflate"}
 _last_call: dict[str, float] = {}
 # 호스트별 최소 호출 간격(초). SEC 는 10 req/s 제한이 있다.
 _MIN_INTERVAL = {"data.sec.gov": 0.12, "www.sec.gov": 0.12, "efts.sec.gov": 0.15,
-                 # 러너(단일 IP 버스트)에서 FRED 가 레이트리밋을 걸었다 — run 39 실측
-                 "fred.stlouisfed.org": 0.45}
+                 # 러너(단일 IP 버스트)에서 FRED 가 일시 차단을 걸었다 — run 39·41 실측.
+                 # 러너는 캐시가 안 쌓여 매 실행 100여 시리즈를 새로 받는다.
+                 "fred.stlouisfed.org": 0.6}
+
+# 호스트별 정책: (재시도 횟수, 백오프 배수(초), 차단 판정 임계)
+# FRED 는 일시 스로틀이 잦으므로 끈질기게 기다렸다 다시 가고, 차단 판정도 늦춘다.
+_HOST_PROFILE = {
+    "fred.stlouisfed.org": (5, 3.0, 12),
+}
 
 
 class FetchError(RuntimeError):
@@ -102,16 +109,17 @@ def fetch(url: str, *, ttl_hours: float = 24.0, json_body: object | None = None,
         return cp.read_bytes()
 
     host = url.split("/")[2]
+    n_retry, backoff, dead_after = _HOST_PROFILE.get(host, (retries, 1.0, _DEAD_AFTER))
 
     # 회로차단: 이미 죽은 호스트는 네트워크를 건드리지 않고 즉시 실패시킨다.
     # 캐시가 있으면 낡았더라도 그걸 쓴다.
     if host in _dead:
         if cp.exists():
             return cp.read_bytes()
-        raise FetchError(f"{host} 접근 불가로 판정됨(연속 {_DEAD_AFTER}회 실패) — 호출 생략")
+        raise FetchError(f"{host} 접근 불가로 판정됨(연속 {dead_after}회 실패) — 호출 생략")
 
     last = None
-    for attempt in range(retries):
+    for attempt in range(n_retry):
         try:
             _throttle(host)
             if json_body is not None:
@@ -145,12 +153,12 @@ def fetch(url: str, *, ttl_hours: float = 24.0, json_body: object | None = None,
         except FetchError as e:
             last = e
             break                      # 403 은 재시도해도 소용없다
-        except Exception as e:         # 네트워크 흔들림은 재시도
+        except Exception as e:         # 네트워크 흔들림·일시 스로틀은 재시도
             last = e
-            time.sleep(1.0 * (attempt + 1))
+            time.sleep(backoff * (attempt + 1))
 
     _fail_streak[host] = _fail_streak.get(host, 0) + 1
-    if _fail_streak[host] >= _DEAD_AFTER and host not in _dead:
+    if _fail_streak[host] >= dead_after and host not in _dead:
         _dead.add(host)
         print(f"[차단 판정] {host} — 연속 {_fail_streak[host]}회 실패. "
               f"이후 호출은 생략하고 캐시/폴백으로 진행합니다.")

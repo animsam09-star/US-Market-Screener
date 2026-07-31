@@ -43,7 +43,7 @@ def main() -> int:
     orig = [f for f in fails if "접근 불가로 판정" not in f]
     seen: list[str] = []
     for f in orig:
-        k = f[:60]
+        k = f[:140]
         if k not in seen:
             seen.append(k)
         if len(seen) >= 3:
@@ -64,7 +64,8 @@ def main() -> int:
         print(f"- FRED 실시간: 실패 — {str(e)[:110]}")
     try:
         from screener.net import host_status
-        print(f"- 차단된 호스트: {host_status() or '없음'}")
+        # 주의: 이 프로세스는 스크리너와 별개라 실행 중 차단 여부는 안 보인다
+        print(f"- 차단된 호스트(진단 프로세스 기준): {host_status() or '없음'}")
     except Exception:
         pass
     return 0
