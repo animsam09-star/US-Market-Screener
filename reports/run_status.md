@@ -21,3 +21,13 @@
 - 실패 샘플: https://fred.stlouisfed.org/graph/fredgraph.csv?id=CAPUTLG33
 - FRED 실시간: OK (654행, 머리='observation_date,CAPG335S')
 - 차단된 호스트: 없음
+
+## 배포
+
+- 시크릿: 설정됨
+- 프로젝트 준비: skipped (이미 있으면 failure 가 정상)
+- 배포: skipped
+- **비밀번호 미설정 — 사이트가 공개 상태입니다.**
+  GitHub 시크릿 `SCREENER_PASSWORD` 를 추가하세요.
+- 주소: https://us-market-screener.pages.dev
+- 진단: 산출물 없음 ([Errno 2] No such file or directory: 'out/screener.html')
