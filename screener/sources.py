@@ -22,10 +22,48 @@ from .net import FetchError, fetch, fetch_json, fetch_text
 _FRED_TTL = 24 * 7  # 월간 시계열이라 주 단위 캐시로 충분
 
 
+_FRED_SNAPSHOT = Path(__file__).resolve().parent.parent / "data" / "fred_snapshot.json"
+_fred_snap: dict | None = None
+_fred_snap_used: set[str] = set()
+
+
+def _fred_from_snapshot(series_id: str) -> list[tuple[date, float]] | None:
+    """동봉 스냅샷 폴백.
+
+    러너는 캐시가 안 쌓여 매 실행 FRED 를 버스트로 받다가 일시 차단당한다
+    (run 39~43 실측, 재시도 정책도 소용없음). FRED 는 월간이라 며칠 낡아도
+    신호가 안 바뀐다 — SEC 재무 스냅샷과 같은 논리다. export_fred.py 로 갱신.
+    """
+    global _fred_snap
+    if _fred_snap is None:
+        if _FRED_SNAPSHOT.exists():
+            import json as _json
+            _fred_snap = _json.loads(_FRED_SNAPSHOT.read_text(encoding="utf-8"))
+        else:
+            _fred_snap = {}
+    rows = (_fred_snap.get("series") or {}).get(series_id)
+    if not rows:
+        return None
+    if series_id not in _fred_snap_used:
+        _fred_snap_used.add(series_id)
+        print(f"[주의] FRED {series_id} 실시간 실패 — 동봉 스냅샷 사용"
+              f"({_fred_snap.get('generated', '?')} 기준)")
+    return [(datetime.strptime(d, "%Y-%m-%d").date(), float(v)) for d, v in rows]
+
+
 def fred_series(series_id: str) -> list[tuple[date, float]]:
-    """FRED 시계열. API 키 없이 graph CSV 엔드포인트를 쓴다."""
+    """FRED 시계열. API 키 없이 graph CSV 엔드포인트를 쓴다.
+
+    실시간이 우선이고, 실패하면 동봉 스냅샷으로 폴백한다.
+    """
     url = f"https://fred.stlouisfed.org/graph/fredgraph.csv?id={urllib.parse.quote(series_id)}"
-    raw = fetch(url, ttl_hours=_FRED_TTL)
+    try:
+        raw = fetch(url, ttl_hours=_FRED_TTL)
+    except FetchError:
+        snap = _fred_from_snapshot(series_id)
+        if snap is not None:
+            return snap
+        raise
     if raw[:2] == b"PK":  # FRED 가 가끔 zip 으로 준다
         z = zipfile.ZipFile(io.BytesIO(raw))
         names = [n for n in z.namelist() if n.lower().endswith(".csv")]
