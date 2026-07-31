@@ -16,6 +16,7 @@ on:
       - "screener/**"
       - "run.py"
       - "discover_customers.py"
+      - "diagnose_output.py"
       - "export_financials.py"
       - "tests/**"
       - "data/**"
