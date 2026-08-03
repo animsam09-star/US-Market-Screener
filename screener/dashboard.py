@@ -4,6 +4,7 @@ from __future__ import annotations
 import html
 import json
 from datetime import datetime
+from pathlib import Path
 
 from .signals import ThemeResult
 from .sources import ticker_names
@@ -72,6 +73,36 @@ STATUS_TAG = {
 }
 
 
+def _load_axis_ic() -> dict:
+    """백테스트가 남긴 축별 예측력(IC). 없으면 배지 생략."""
+    p = Path(__file__).resolve().parent.parent / "reports" / "axis_ic.json"
+    try:
+        return json.loads(p.read_text(encoding="utf-8"))
+    except Exception:
+        return {}
+
+
+AXIS_IC = _load_axis_ic()
+
+
+def _ic_badge(key: str | None) -> str:
+    """축 이름 옆 검증 배지 — 백테스트로 예측력이 확인됐는지.
+
+    로드맵 1순위의 산출: '유효성 낮은 축은 예측력 미확인 표시'. 점수는 그대로
+    두되(감으로 가중치를 바꾸면 과적합), 읽는 사람이 얼마나 믿을지 알게 한다.
+    """
+    d = AXIS_IC.get(key or "")
+    if not d or d.get("ic") is None:
+        return ""
+    ic = d["ic"]
+    if ic >= 0.15:
+        return f'<span class="tag ic-ok" title="백테스트 IC {ic:+.2f}">검증 {ic:+.2f}</span>'
+    if ic <= -0.10:
+        return (f'<span class="tag ic-bad" title="백테스트 IC {ic:+.2f} — 점수가 높을수록 '
+                f'이후 수익률이 낮았다">역방향 {ic:+.2f}</span>')
+    return f'<span class="tag ic-na" title="백테스트 IC {ic:+.2f}">예측력 미확인</span>'
+
+
 def _signal_rows(sigs, *, show_status: bool = True, claimed=None) -> str:
     """축별 행. 기각·미확증은 사유를 반드시 함께 보여준다.
 
@@ -98,7 +129,8 @@ def _signal_rows(sigs, *, show_status: bool = True, claimed=None) -> str:
         star = ('<span class="star">★</span>'
                 if claimed and getattr(s, "key", None) in claimed else "")
         rows.append(
-            f'<tr class="{cls}"><th scope="row">{star}{_e(s.label)}{tag}</th>'
+            f'<tr class="{cls}"><th scope="row">{star}{_e(s.label)}{tag}'
+            f'{_ic_badge(getattr(s, "key", None))}</th>'
             f'<td class="bcell">{_bar(None if status in ("rejected", "nodata") else eff)}</td>'
             f'<td class="num">{sc}</td>'
             f'<td class="det">{body}{ev}{why}</td></tr>'
@@ -584,6 +616,9 @@ border:1px solid currentColor;vertical-align:1px;letter-spacing:.02em}
 .st-warn{color:var(--text-secondary)}
 .st-rej{color:var(--critical)}
 .st-na{color:var(--muted)}
+.ic-ok{color:var(--good);border:1px solid var(--good);background:transparent}
+.ic-bad{color:var(--critical);border:1px solid var(--critical);background:transparent}
+.ic-na{color:var(--muted);border:1px solid var(--border);background:transparent}
 .healthwarn{margin:16px 0 0;padding:14px 18px;border-radius:12px;
 background:var(--surface-1);border:1px solid var(--critical);
 border-left:4px solid var(--critical)}
@@ -725,7 +760,8 @@ r.dataset.theme=r.dataset.theme==='dark'?'light':'dark'">라이트/다크</butto
 <p class="sub">촉매(왜 오르나) × 미반영(왜 아직 안 올랐나)의 교집합으로 테마를 고른다.
 목표는 오른쪽 위 사분면 — 이유는 쌓였는데 가격은 아직 안 움직인 곳.</p>
 <p class="meta">{now} 기준 · 테마 {len(ranked)}개 · 목표 사분면 {n_target}개 ·
-벤치마크 {_e(benchmark)} · 전 지표 무료 공공데이터(FRED·SEC·Federal Register·Yahoo)</p>
+벤치마크 {_e(benchmark)} · 전 지표 무료 공공데이터(FRED·SEC·Federal Register·Yahoo) ·
+<a href="backtest.html">백테스트 검증 결과</a></p>
 
 {warn}
 {_priority_list(ranked)}

@@ -19,6 +19,7 @@ from .sources import (
     fedreg_signal,
     financials_snapshot,
     fred_series,
+    quarterly_from_periods,
     sec_company_facts,
     snapshot_quarterly,
     xbrl_quarterly,
@@ -205,17 +206,33 @@ def u5_basing(px: dict) -> Signal:
 # ================================================================ 재무 집계
 
 def aggregate_financials(tickers: list[str], tmap: dict[str, int],
-                         prices: dict[str, list]) -> tuple[dict, list[str]]:
+                         prices: dict[str, list],
+                         asof: str | None = None,
+                         percache: dict | None = None) -> tuple[dict, list[str]]:
     """그룹 재무 집계.
 
     한 기업이 특정 분기를 공시 안 하면 합계가 툭 떨어진다. 해당 분기를 보고한
     기업이 그룹의 60% 이상일 때만 그 분기를 채택해, 구성 변화로 생긴 가짜
     급변을 배제한다.
+
+    asof 를 주면 그 날짜까지 접수된 공시만 쓴다(백테스트). 이때 동봉 스냅샷
+    폴백은 쓰지 않는다 — 스냅샷은 '현재' 데이터라 과거 시점에 넣으면 누출이다.
+    percache({티커: {개념: 원시 기간 목록}})를 주면 facts 재파싱 없이 그 위에서
+    계산한다 — 백테스트가 스냅샷마다 거대 JSON 을 다시 읽지 않기 위함.
     """
     notes: list[str] = []
     per: dict[str, dict] = {}
     missing, from_snap = [], []
     for t in tickers:
+        if percache is not None:
+            tl = percache.get(t.upper()) or {}
+            q = {c: quarterly_from_periods(tl.get(c) or [], c, asof)
+                 for c in CONCEPTS}
+            if any(q.values()):
+                per[t] = q
+            else:
+                missing.append(t)
+            continue
         cik = tmap.get(t.upper())
         facts = None
         if cik:
@@ -224,7 +241,16 @@ def aggregate_financials(tickers: list[str], tmap: dict[str, int],
             except FetchError:
                 facts = None
         if facts is not None:
-            per[t] = {c: xbrl_quarterly(facts, c) for c in CONCEPTS}
+            q = {c: xbrl_quarterly(facts, c, asof=asof) for c in CONCEPTS}
+            if asof is not None and not any(q.values()):
+                # 그 시점엔 공시가 아직 없던 회사(상장 전 등) — 분모에 넣으면
+                # 60% 보고 게이트가 실제보다 빡빡해진다
+                missing.append(t)
+                continue
+            per[t] = q
+            continue
+        if asof is not None:
+            missing.append(t)
             continue
         # SEC 가 막혔으면 동봉 스냅샷으로. 재무는 분기에 한 번 바뀌므로
         # 며칠 낡아도 신호가 달라지지 않는다.

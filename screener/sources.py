@@ -238,23 +238,17 @@ def _quarter_of(d: str) -> tuple[int, int] | None:
     return dt.year, (dt.month - 1) // 3 + 1
 
 
-def xbrl_quarterly(facts: dict, concept: str) -> dict[tuple[int, int], float]:
-    """companyfacts 에서 분기 시계열을 뽑는다.
+def xbrl_periods(facts: dict, concept: str) -> list[list[tuple]]:
+    """태그별 원시 기간 목록 [(start, end, filed, val), …] — 태그 폴백 순서 유지.
 
-    SEC 의 'frame' 필드만 쓰면 안 된다 — SEC 는 프레임을 일부 사실에만 붙인다
-    (한 기업의 capex 127건 중 31건). 프레임만 쓰면 기업마다 채워진 분기가
-    달라져, 그룹 합계에서 '60% 이상 보고' 교집합이 거의 남지 않는다.
-
-    따라서 start/end 날짜에서 직접 분기를 유도한다.
-      유량(매출·capex·감가상각) : 기간 길이 80~100일인 항목 = 분기
-      저량(재고·PP&E·주식수)     : end 시점만 있는 항목 = 그 분기 말 잔액
-    같은 분기에 값이 여러 번 나오면(수정 공시) 가장 최근 접수분을 쓴다.
+    백테스트가 스냅샷마다 수 MB 짜리 facts JSON 을 재파싱하면 몇 시간이 된다.
+    파싱은 여기서 티커당 한 번만 하고, 시점 컷·분기 복원은
+    quarterly_from_periods 가 이 경량 구조 위에서 반복한다.
     """
     is_stock = concept in STOCK_CONCEPTS
-
+    out: list[list[tuple]] = []
     for tag in TAGS.get(concept, [concept]):
-        # (start, end) -> val, 수정 공시는 가장 최근 접수분 채택
-        periods: dict[tuple[str, str], tuple[str, float]] = {}
+        rows: list[tuple] = []
         for ns in ("us-gaap", "dei", "ifrs-full"):
             for unit, entries in (facts.get("facts", {}).get(ns, {})
                                   .get(tag, {}).get("units", {}).items()):
@@ -269,11 +263,30 @@ def xbrl_quarterly(facts: dict, concept: str) -> dict[tuple[int, int], float]:
                         continue              # 저량인데 기간이 있으면 다른 개념
                     if not is_stock and not start:
                         continue
-                    key = (start or "", end)
-                    filed = e.get("filed", "")
-                    prev = periods.get(key)
-                    if prev is None or filed >= prev[0]:
-                        periods[key] = (filed, float(e["val"]))
+                    try:
+                        rows.append((start or "", end, e.get("filed", ""),
+                                     float(e["val"])))
+                    except (TypeError, ValueError):
+                        continue
+        if rows:
+            out.append(rows)
+    return out
+
+
+def quarterly_from_periods(tag_lists: list[list[tuple]], concept: str,
+                           asof: str | None = None) -> dict[tuple[int, int], float]:
+    """원시 기간 목록 → 분기 시계열. asof 는 접수일(filed) 컷."""
+    is_stock = concept in STOCK_CONCEPTS
+    for rows in tag_lists:
+        # (start, end) -> val, 수정 공시는 (asof 이내에서) 가장 최근 접수분 채택
+        periods: dict[tuple[str, str], tuple[str, float]] = {}
+        for start, end, filed, val in rows:
+            if asof is not None and (not filed or filed > asof):
+                continue      # 그 시점엔 아직 접수 전 — 미래 정보
+            key = (start, end)
+            prev = periods.get(key)
+            if prev is None or filed >= prev[0]:
+                periods[key] = (filed, val)
         if not periods:
             continue
 
@@ -283,7 +296,9 @@ def xbrl_quarterly(facts: dict, concept: str) -> dict[tuple[int, int], float]:
                 k = _quarter_of(end)
                 if k:
                     out[k] = v
-            return out
+            if out:
+                return out
+            continue
 
         # 유량: 미국 기업은 누적(YTD)으로 보고한다. 같은 start 를 공유하는 기간들을
         # end 순으로 차분해 개별 분기를 복원한다. Q2 = H1 − Q1, Q3 = 9M − H1 ...
@@ -309,6 +324,26 @@ def xbrl_quarterly(facts: dict, concept: str) -> dict[tuple[int, int], float]:
         if discrete:
             return discrete
     return {}
+
+
+def xbrl_quarterly(facts: dict, concept: str,
+                   asof: str | None = None) -> dict[tuple[int, int], float]:
+    """companyfacts 에서 분기 시계열을 뽑는다.
+
+    SEC 의 'frame' 필드만 쓰면 안 된다 — SEC 는 프레임을 일부 사실에만 붙인다
+    (한 기업의 capex 127건 중 31건). 프레임만 쓰면 기업마다 채워진 분기가
+    달라져, 그룹 합계에서 '60% 이상 보고' 교집합이 거의 남지 않는다.
+
+    따라서 start/end 날짜에서 직접 분기를 유도한다.
+      유량(매출·capex·감가상각) : 기간 길이 80~100일인 항목 = 분기
+      저량(재고·PP&E·주식수)     : end 시점만 있는 항목 = 그 분기 말 잔액
+    같은 분기에 값이 여러 번 나오면(수정 공시) 가장 최근 접수분을 쓴다.
+
+    asof('YYYY-MM-DD') 를 주면 **그 날짜까지 접수(filed)된 공시만** 쓴다 —
+    백테스트의 미래 정보 누출 방지 컷. filed 가 없는 항목은 언제 알 수 있었는지
+    모르므로 보수적으로 버린다.
+    """
+    return quarterly_from_periods(xbrl_periods(facts, concept), concept, asof)
 
 
 def edgar_fts(phrase: str, *, forms: str = "10-K,10-Q",
@@ -358,9 +393,34 @@ def sec_sic(cik: int) -> tuple[str, str]:
 
 # ---------------------------------------------------------------- 주가
 
+def epoch_date(ts: float) -> date:
+    """유닉스 초 → 날짜. Windows 의 utcfromtimestamp 는 음수(1970년 이전)에서
+    OSError 를 낸다 — Yahoo 'max' 구간의 옛 상장 종목(CAT 등)이 그렇다."""
+    return (datetime(1970, 1, 1) + timedelta(seconds=ts)).date()
+
+
+def looks_daily(series: list) -> bool:
+    """일간 시계열인지 검사. Yahoo 는 range=max 에서 interval=1d 를 조용히
+    무시하고 월간을 줬다 — 그걸 일간으로 해석하면 '252일 전'이 21년 전이 되고
+    백테스트 전방수익률이 전부 죽는다. 조용한 오염이라 게이트가 필요하다."""
+    if len(series) < 30:
+        return True                    # 짧으면 판단 유보 (신규 상장)
+    span = (series[-1][0] - series[0][0]).days
+    return span / (len(series) - 1) <= 5.0
+
+
 def _yahoo(ticker: str, rng: str) -> list[tuple[date, float]]:
-    url = (f"https://query1.finance.yahoo.com/v8/finance/chart/{urllib.parse.quote(ticker)}"
-           f"?range={rng}&interval=1d")
+    base = f"https://query1.finance.yahoo.com/v8/finance/chart/{urllib.parse.quote(ticker)}"
+    if rng == "max":
+        # range=max 는 interval=1d 를 조용히 무시하고 월간을 준다(실측: SPY 402개).
+        # period1/period2 명시 방식은 일간 전체 이력을 준다(SPY 8,433개).
+        # p2 는 자정 기준으로 고정 — 초 단위로 바뀌면 캐시 키가 매번 달라져
+        # 실행마다 전 종목을 다시 받는다
+        p2 = int((datetime.combine(date.today(), datetime.min.time())
+                  - datetime(1970, 1, 1)).total_seconds()) + 86400
+        url = f"{base}?period1=315532800&period2={p2}&interval=1d"
+    else:
+        url = f"{base}?range={rng}&interval=1d"
     d = fetch_json(url, ttl_hours=12)
     res = (d.get("chart") or {}).get("result")
     if not res:
@@ -368,10 +428,11 @@ def _yahoo(ticker: str, rng: str) -> list[tuple[date, float]]:
     r = res[0]
     ts = r.get("timestamp") or []
     adj = ((r.get("indicators", {}).get("adjclose") or [{}])[0]).get("adjclose") or []
-    out = [(datetime.utcfromtimestamp(t).date(), float(c))
-           for t, c in zip(ts, adj) if c is not None]
+    out = [(epoch_date(t), float(c)) for t, c in zip(ts, adj) if c is not None]
     if not out:
         raise FetchError(f"{ticker}: 종가 전부 결측")
+    if not looks_daily(out):
+        raise FetchError(f"{ticker}: 일간이 아닌 시계열({len(out)}개) — 해상도 오염")
     return out
 
 

@@ -750,6 +750,108 @@ def f29_census_time_param():
     check("F29 공백 인코딩", " " not in u, u)
 
 
+# ---------------------------------------------------------------- F32
+def f32_asof_no_future_leak():
+    """백테스트의 전부는 미래 정보 누출 방지다 — SEC 는 접수일(filed) 컷.
+
+    2024-04-30 에 접수된 Q1 실적은 2024-03-31 시점 백테스트에서 보이면 안 되고,
+    나중의 수정 공시(같은 분기 재접수)는 수정 전 값으로 보여야 한다.
+    """
+    from screener.sources import xbrl_quarterly
+
+    facts = {"facts": {"us-gaap": {"Revenues": {"units": {"USD": [
+        {"start": "2024-01-01", "end": "2024-03-31", "val": 100, "filed": "2024-04-30"},
+        {"start": "2024-01-01", "end": "2024-03-31", "val": 999, "filed": "2024-08-15"},
+    ]}}}}}
+    check("F32 접수 전 시점엔 안 보임",
+          xbrl_quarterly(facts, "revenue", asof="2024-03-31") == {}, "누출!")
+    check("F32 접수 후엔 원래 값",
+          xbrl_quarterly(facts, "revenue", asof="2024-05-01").get((2024, 1)) == 100)
+    check("F32 수정 공시 후엔 수정 값",
+          xbrl_quarterly(facts, "revenue", asof="2024-09-01").get((2024, 1)) == 999)
+    check("F32 asof 없으면 종전 동작(최신)",
+          xbrl_quarterly(facts, "revenue").get((2024, 1)) == 999)
+
+    # 경량 2단계 경로(파싱 1회 + 시점별 재계산)가 원본 경로와 같은 답을 내야 한다
+    from screener.sources import quarterly_from_periods, xbrl_periods
+    pl = xbrl_periods(facts, "revenue")
+    check("F32 경량 경로 = 원본 경로",
+          quarterly_from_periods(pl, "revenue", "2024-09-01")
+          == xbrl_quarterly(facts, "revenue", asof="2024-09-01"))
+
+    # FRED 는 발표 지연 컷 — 관측일이 스냅샷 44일 전이어도 아직 미발표일 수 있다
+    from datetime import date as _d
+
+    from screener.backtest import series_asof
+    s = [(_d(2024, 1, 1), 1.0), (_d(2024, 2, 20), 2.0), (_d(2024, 3, 25), 3.0)]
+    # 4/1 시점: 컷 = 2/16 → 2/20 관측치는 아직 미발표 취급
+    cut = series_asof(s, _d(2024, 4, 1), lag_days=45)
+    check("F32 발표 지연 45일 컷", [v for _, v in cut] == [1.0], str(cut))
+    # 4/10 시점: 컷 = 2/25 → 2/20 관측치 포함
+    cut2 = series_asof(s, _d(2024, 4, 10), lag_days=45)
+    check("F32 지연 경과 후 포함", [v for _, v in cut2] == [1.0, 2.0], str(cut2))
+
+
+# ---------------------------------------------------------------- F33
+def f33_forward_return_alive_only():
+    """상폐 종목의 옛 종가를 '그 날 가격'으로 쓰면 죽은 종목이 살아있는 척 한다.
+
+    forward_return 은 양끝 모두 '신선한'(10일 내) 가격이 있어야 값을 낸다.
+    """
+    from datetime import date as _d
+    from datetime import timedelta as _td
+
+    from screener.backtest import forward_return, spearman
+
+    base = _d(2023, 1, 2)
+    alive = [(base + _td(days=i), 100.0 * (1 + 0.001 * i)) for i in range(500)]
+    r = forward_return(alive, _d(2023, 6, 1), 182)
+    check("F33 정상 종목 수익률 산출", r is not None and r > 0, str(r))
+
+    delisted = [(base + _td(days=i), 100.0) for i in range(120)]   # 5월 초 상폐
+    r2 = forward_return(delisted, _d(2023, 4, 20), 182)
+    check("F33 상폐 종목은 None", r2 is None, str(r2))
+
+    # Yahoo 는 range=max 에서 interval=1d 를 조용히 무시하고 월간을 준다 —
+    # 월간을 일간으로 해석하면 '252일 전'이 21년 전이 되고 전방수익률이 전부
+    # 죽는다(실측: 384건 전부 None). 해상도 게이트가 이를 잡아야 한다.
+    from screener.sources import looks_daily
+    daily = [(base + _td(days=i), 1.0) for i in range(300)]
+    monthly = [(base + _td(days=30 * i), 1.0) for i in range(300)]
+    check("F33 일간 시계열 통과", looks_daily(daily) is True)
+    check("F33 월간 시계열 차단", looks_daily(monthly) is False)
+
+    # Windows utcfromtimestamp 는 음수(1970년 이전)에서 OSError —
+    # Yahoo 'max' 구간의 옛 상장 종목(CAT 등)이 백테스트 수집을 통째로 죽였다
+    from screener.sources import epoch_date
+    check("F33 1970년 이전 타임스탬프", epoch_date(-86400) == _d(1969, 12, 31),
+          str(epoch_date(-86400)))
+    check("F33 이후 타임스탬프", epoch_date(86400) == _d(1970, 1, 2))
+
+    # 순위 상관 유틸 방향 확인
+    up = [(i, i * 2.0) for i in range(10)]
+    dn = [(i, -i * 2.0) for i in range(10)]
+    check("F33 스피어만 +1", abs(spearman(up) - 1.0) < 1e-9)
+    check("F33 스피어만 -1", abs(spearman(dn) + 1.0) < 1e-9)
+    check("F33 표본 8 미만은 None", spearman(up[:5]) is None)
+
+
+# ---------------------------------------------------------------- F34
+def f34_asof_no_snapshot_fallback():
+    """백테스트에서 동봉 스냅샷 폴백은 그 자체가 누출이다.
+
+    스냅샷은 '현재' 데이터다. asof 가 있으면 SEC facts 미확보 종목은
+    스냅샷으로 채우지 말고 결측 처리해야 한다.
+    """
+    from screener.signals import aggregate_financials
+
+    # tmap 에 없는 티커 → facts 없음. asof 없으면 스냅샷 폴백을 시도하지만
+    # asof 가 있으면 폴백 없이 미확보로 남아야 한다.
+    agg, notes = aggregate_financials(["NOSUCH"], {}, {}, asof="2020-12-31")
+    check("F34 asof 시 스냅샷 폴백 안 함", agg == {}, str(agg)[:60])
+    check("F34 미확보 사유 명시", any("미확보" in n for n in notes), str(notes))
+
+
 # ---------------------------------------------------------------- F31
 def f31_revenue_acceleration():
     """같은 성장률이면 '가속 중'인 쪽이 위다.
@@ -809,7 +911,9 @@ def main() -> int:
                f23_rebound_not_unpriced, f24_rebound_detection,
                f25_partial_thesis_disclosure, f26_supply_long_run,
                f27_benefit_order, f28_three_year_subset_index,
-               f29_census_time_param, f30_penetration_units, f31_revenue_acceleration]:
+               f29_census_time_param, f30_penetration_units, f31_revenue_acceleration,
+               f32_asof_no_future_leak, f33_forward_return_alive_only,
+               f34_asof_no_snapshot_fallback]:
         try:
             fn()
         except Exception as e:

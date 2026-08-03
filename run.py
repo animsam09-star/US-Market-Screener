@@ -128,6 +128,12 @@ def main() -> int:
     out.write_text(html, encoding="utf-8")
     # 배포 시 루트(/)로 열려야 한다. index.html 이 없으면 404 가 난다.
     (OUT / "index.html").write_text(html, encoding="utf-8")
+    # 백테스트 보고서는 로컬에서 생성해 저장소에 커밋한다(러너에서 재실행하기엔
+    # 무겁다). 있으면 함께 배포해 /backtest.html 로 열리게 한다.
+    bt = ROOT / "reports" / "backtest.html"
+    if bt.exists():
+        (OUT / "backtest.html").write_text(bt.read_text(encoding="utf-8"),
+                                           encoding="utf-8")
     _install_gate()
     print(f"\n완료 ({time.time() - t0:.0f}초) → {out}")
 
