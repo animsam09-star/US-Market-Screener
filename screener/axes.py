@@ -732,6 +732,24 @@ def a9_bottleneck(cfg: dict, fred) -> Signal:
 
 # ---------------------------------------------------------------- ⑩ 대체
 
+M3_UNIT = 1e6   # M3 국내 출하는 '백만 달러', Census 수입은 '달러'
+
+
+def _penetration(imp: list, dom: list) -> list:
+    """월별 수입침투율(%) = 수입 / (국내출하 + 수입). 같은 달끼리만 짝짓는다.
+
+    단위를 맞추지 않으면 분모에서 국내 출하가 사실상 사라져 침투율이 100%로
+    붙는다(실측: 철강·반도체·화학·전력기기 전부 100.0%).
+    """
+    dm = {(d.year, d.month): v * M3_UNIT for d, v in dom}
+    out: list[tuple[date, float]] = []
+    for d, v in imp:
+        base = dm.get((d.year, d.month))
+        if base and (base + v) > 0:
+            out.append((d, 100.0 * v / (base + v)))
+    return out
+
+
 def a10_substitution(cfg: dict, fred) -> Signal:
     """산업 전체가 안 커도 한쪽이 다른 쪽을 먹으면 그 안에서 승자가 난다.
 
@@ -757,17 +775,15 @@ def a10_substitution(cfg: dict, fred) -> Signal:
     except Exception as e:
         return _nodata(*K, f"국내 출하 조회 실패: {e}")
 
-    # 침투율 = 수입 / (국내출하 + 수입). 같은 달끼리만 짝짓는다.
-    dm = {(d.year, d.month): v for d, v in dom}
-    pen: list[tuple[date, float]] = []
-    for d, v in imp:
-        base = dm.get((d.year, d.month))
-        if base and (base + v) > 0:
-            pen.append((d, 100.0 * v / (base + v)))
+    pen = _penetration(imp, dom)
     if len(pen) < 24:
         return _nodata(*K, f"공통 이력 부족({len(pen)}개월) — 수입과 출하의 단위·주기 확인 필요")
 
     cur = pen[-1][1]
+    # 단위가 어긋나면 침투율이 100% 근처로 붙는다(분모 실종). 실측: M3 를 달러로
+    # 안 맞춰 4개 테마 전부 100.0%가 나왔다. 그런 값으로 점수를 내느니 보류가 낫다.
+    if cur > 95:
+        return _nodata(*K, f"침투율 {cur:.1f}% — 비현실적 값, 수입·출하 단위 불일치 의심")
     rank = pct_rank(cur, [v for _, v in pen])
     tr = slope(pen, 12)          # 최근 1년 추세(%p/월)
     if rank is None or tr is None:

@@ -750,6 +750,26 @@ def f29_census_time_param():
     check("F29 공백 인코딩", " " not in u, u)
 
 
+# ---------------------------------------------------------------- F30
+def f30_penetration_units():
+    """수입침투율은 수입(달러)과 M3 출하(백만 달러)의 단위를 맞춰 계산한다.
+
+    사고: 단위를 안 맞춰 분모에서 국내 출하가 사실상 사라졌고, ⑩축이 살아난
+    4개 테마 전부 침투율 100.0%(추세 0)로 나왔다 — 조용히 틀린 값.
+    """
+    from datetime import date as _d
+
+    from screener.axes import _penetration
+
+    imp = [(_d(2026, m, 1), 2e9) for m in range(1, 7)]      # 월 20억 달러 수입
+    dom = [(_d(2026, m, 1), 8000.0) for m in range(1, 7)]   # 월 8,000백만 달러 출하
+    pen = _penetration(imp, dom)
+    check("F30 침투율 계산", len(pen) == 6, str(len(pen)))
+    check("F30 단위 정합(20% 부근)", abs(pen[-1][1] - 20.0) < 0.1,
+          f"{pen[-1][1]:.2f}%")
+    check("F30 100% 아님", pen[-1][1] < 95, f"{pen[-1][1]:.1f}")
+
+
 def main() -> int:
     for fn in [f1_ytd_differencing, f2_no_economy_wide_fallback, f3_bea_result_shapes,
                f4_bea_final_demand_excluded, f5_naics_matching_direction,
@@ -764,7 +784,7 @@ def main() -> int:
                f23_rebound_not_unpriced, f24_rebound_detection,
                f25_partial_thesis_disclosure, f26_supply_long_run,
                f27_benefit_order, f28_three_year_subset_index,
-               f29_census_time_param]:
+               f29_census_time_param, f30_penetration_units]:
         try:
             fn()
         except Exception as e:
