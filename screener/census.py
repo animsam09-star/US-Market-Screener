@@ -49,8 +49,7 @@ def trade_monthly(naics: str, flow: str = "imports", years: int = 6) -> list[tup
     this_year = date.today().year
     out: list[tuple[date, float]] = []
     for y in range(this_year - years, this_year + 1):
-        url = (f"{BASE}/{flow}/naics?get=NAICS,{val}"
-               f"&NAICS={naics}&time from {y}-01 to {y}-12&key={k}".replace(" ", "%20"))
+        url = _year_url(naics, flow, val, y, k)
         try:
             rows = _rows(url)
         except CensusError:
@@ -67,6 +66,13 @@ def trade_monthly(naics: str, flow: str = "imports", years: int = 6) -> list[tup
         raise CensusError(f"NAICS {naics} {flow}: 데이터 없음")
     out.sort()
     return out
+
+
+def _year_url(naics: str, flow: str, val: str, y: int, key: str) -> str:
+    # time 파라미터에 '='가 빠진 채(&time from …) 나가던 버그가 있었다 —
+    # 전 연도 조회가 무효 쿼리로 죽어 '데이터 없음' 4개 테마가 났다(run 50).
+    return (f"{BASE}/{flow}/naics?get=NAICS,{val}"
+            f"&NAICS={naics}&time=from {y}-01 to {y}-12&key={key}").replace(" ", "%20")
 
 
 def series_url(naics: str) -> str:

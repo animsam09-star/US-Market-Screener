@@ -391,10 +391,11 @@ def _verdict(r: ThemeResult) -> tuple[str, str, str]:
 
 
 def _stock_table(r: ThemeResult) -> str:
-    """종목별 미반영 내역.
+    """종목별 내역 — 수혜가 실적으로 확인되는 순.
 
-    테마가 '어디를 볼까'를 답하면 이 표는 '그중 뭐가 아직 안 움직였나'를 답한다.
-    종목을 고르는 모델이 아니다 — 촉매는 테마 전체에 걸린다.
+    미반영(안 오른) 순으로 올리면 '수혜가 없어서 안 오른' 종목이 맨 위에 온다
+    (비료 MOS 실측). 매출 성장·이익률 개선이 확인되는 종목을 위로 올리고,
+    이미 오른 정도는 색(빨강)과 상대수익 열로 보여준다.
     """
     rows = []
     for s in r.stocks:
@@ -407,24 +408,25 @@ def _stock_table(r: ThemeResult) -> str:
         rows.append(
             f'<tr class="{cls}"><th scope="row">{_e(s["ticker"])}'
             f'<span class="coname">{_e(NAMES.get(s["ticker"].upper(), ""))}</span></th>'
-            f'<td class="num">{num("rel_12m", "{:+.1f}", "%p")}</td>'
-            f'<td class="num">{num("abs_12m", "{:+.1f}", "%")}</td>'
-            f'<td class="num">{num("drawdown", "{:.0f}", "%")}</td>'
             f'<td class="num">{num("rev_yoy", "{:+.1f}", "%")}</td>'
-            f'<td class="num">{num("op_margin", "{:.1f}", "%")}</td></tr>')
+            f'<td class="num">{num("opm_delta", "{:+.1f}", "%p")}</td>'
+            f'<td class="num">{num("op_margin", "{:.1f}", "%")}</td>'
+            f'<td class="num">{num("rel_12m", "{:+.1f}", "%p")}</td>'
+            f'<td class="num">{num("drawdown", "{:.0f}", "%")}</td></tr>')
     if not rows:
         return ""
     return (
         '<details class="stocks"><summary>종목별 내역 '
-        f'({len(r.stocks)}개 · 미반영 순)</summary>'
+        f'({len(r.stocks)}개 · 수혜 강한 순)</summary>'
         '<table class="stk"><thead><tr><th>티커 · 회사명</th>'
-        '<th class="num">상대수익 12M</th><th class="num">절대 12M</th>'
-        '<th class="num">고점대비</th><th class="num">매출 YoY</th>'
-        '<th class="num">영업이익률</th></tr></thead>'
+        '<th class="num">매출 YoY</th><th class="num">이익률 개선</th>'
+        '<th class="num">영업이익률</th><th class="num">상대수익 12M</th>'
+        '<th class="num">고점대비</th></tr></thead>'
         f'<tbody>{"".join(rows)}</tbody></table>'
-        '<p class="stknote">촉매는 테마 전체에 걸린다. 이 표는 같은 테마 안에서 '
-        '<strong>아직 가격에 안 들어간 종목</strong>을 위로 올린 것이지, '
-        '종목을 고르는 모델이 아니다.</p></details>')
+        '<p class="stknote">테마의 촉매가 <strong>실적으로 확인되는 종목'
+        '(매출 성장 + 이익률 개선)</strong>을 위로 올렸다. 빨간 행은 이미 많이 '
+        '오른 종목이니 반영 정도를 함께 볼 것. 재무 미확보 종목(—)은 근거가 '
+        '없어 맨 아래. 종목을 고르는 모델이 아니다.</p></details>')
 
 
 def _priority_list(ranked: list[ThemeResult]) -> str:
@@ -676,16 +678,25 @@ def build_html(results: list[ThemeResult], *, benchmark: str = "SPY") -> str:
 
     # 판독 건강도 — 데이터가 통째로 안 들어온 것을 조용히 넘기지 않는다.
     # 주가가 죽으면 미반영 축 4개 중 2개가 사라지는데, 점수만 보면 눈치채기 어렵다.
+    # 조회 실패(U3 죽음)와 이력 부족(U4 만 죽음 — 신규 상장 테마)은 원인이 달라
+    # 나눠 알린다. 합쳐 놨더니 GEV 상장 이력 부족을 'Yahoo 차단'으로 오진했다.
     dead_px = sum(1 for r in ranked
-                  if any(s.key in ("U3", "U4") and s.score is None for s in r.unpriced))
+                  if any(s.key == "U3" and s.score is None for s in r.unpriced))
+    short3 = sum(1 for r in ranked
+                 if any(s.key == "U4" and s.score is None for s in r.unpriced)
+                 and not any(s.key == "U3" and s.score is None for s in r.unpriced))
     dead_fin = sum(1 for r in ranked if not r.series.get("n_companies"))
     warn = ""
-    if dead_px or dead_fin:
+    if dead_px or short3 or dead_fin:
         items = []
         if dead_px:
             items.append(f"<li><strong>주가 미확보 {dead_px}/{len(ranked)}개 테마</strong> — "
                          "‘주가 미반응’·‘고점 대비 눌림’ 두 축이 빠졌습니다. "
                          "Yahoo 가 클라우드 IP 를 차단했을 수 있습니다(Stooq 폴백도 실패).</li>")
+        if short3:
+            items.append(f"<li><strong>3년 축 미측정 {short3}개 테마</strong> — "
+                         "상장 3년 이상 종목이 없어 장기 미반영(U4)을 잴 수 없습니다. "
+                         "조회 실패가 아니라 이력 부족입니다.</li>")
         if dead_fin:
             items.append(f"<li><strong>SEC 재무 미확보 {dead_fin}개 테마</strong> — "
                          "실적·밸류에이션 축이 빠졌습니다. User-Agent 미설정 시 SEC 가 "

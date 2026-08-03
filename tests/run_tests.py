@@ -686,6 +686,70 @@ def f26_supply_long_run():
           s2.status == "rejected" or (s2.score or 0) < 40, f"{s2.status} {s2.score}")
 
 
+# ---------------------------------------------------------------- F27
+def f27_benefit_order():
+    """종목 정렬은 '수혜가 실적으로 확인되는' 순.
+
+    사고: 미반영 순으로 올렸더니 '수혜가 없어서 안 오른' 종목(비료 MOS,
+    이익률 0.9%)이 1위로 보였다. 매출 성장 + 이익률 개선 순으로 바꾼다.
+    """
+    from screener.signals import benefit_order
+
+    rows = [
+        {"ticker": "MOS", "rev_yoy": 12.3, "opm_delta": -1.0, "rel_12m": -55.9},
+        {"ticker": "CF", "rev_yoy": 20.9, "opm_delta": 3.0, "rel_12m": 18.3},
+        {"ticker": "UAN", "rev_yoy": 19.0, "opm_delta": 2.0, "rel_12m": 33.8},
+        {"ticker": "IPI"},                       # 재무 없음 — 맨 아래여야 한다
+    ]
+    out = benefit_order(rows)
+    order = [r["ticker"] for r in out]
+    check("F27 실적 최강(CF)이 1위", order[0] == "CF", str(order))
+    check("F27 재무 없는 종목(IPI)이 꼴찌", order[-1] == "IPI", str(order))
+    check("F27 이익률 악화(MOS)는 아래쪽", order.index("MOS") > order.index("UAN"),
+          str(order))
+    check("F27 benefit 점수 부여", all("benefit" in r for r in out))
+
+
+# ---------------------------------------------------------------- F28
+def f28_three_year_subset_index():
+    """신규 상장 종목 하나가 테마의 3년 축을 죽이면 안 된다.
+
+    사고: 전력기기에 GEV(2024 상장)가 들어가자 전 종목 공통 날짜 교집합이
+    상장일로 잘려 U4 가 테마째 사라졌고, 경고는 'Yahoo 차단'으로 오진했다.
+    3년 이력이 있는 종목만으로 다시 지수를 만들어 측정해야 한다.
+    """
+    from datetime import date as _d
+    from datetime import timedelta as _td
+
+    from screener.signals import price_stats
+
+    base = _d(2020, 1, 1)
+    days = [base + _td(days=i) for i in range(1100)]
+    long1 = [(d, 100.0 + i * 0.05) for i, d in enumerate(days)]
+    long2 = [(d, 100.0 + i * 0.03) for i, d in enumerate(days)]
+    newly = [(d, 50.0 + i * 0.1) for i, d in enumerate(days[-400:])]  # 신규 상장
+    bench = [(d, 100.0) for d in days]
+    st = price_stats(["A", "B", "N"], {"A": long1, "B": long2, "N": newly}, bench)
+    check("F28 3년 축이 살아 있다", st.get("rel_3y") is not None, str(st.get("rel_3y")))
+    check("F28 부분 지수 종목 수 기록", st.get("n_3y") == 2 and st.get("n_px") == 3,
+          f"n_3y={st.get('n_3y')} n_px={st.get('n_px')}")
+    check("F28 12개월 축은 전 종목 기준 유지", st.get("rel_12m") is not None)
+
+
+# ---------------------------------------------------------------- F29
+def f29_census_time_param():
+    """Census 조회 URL 의 time 파라미터에 '='가 있어야 한다.
+
+    사고: '&time from 2020-01…'(= 누락)으로 나가 전 연도 조회가 무효 쿼리로
+    죽었고, ⑩축 4개 테마가 '데이터 없음'이 났다(run 50).
+    """
+    from screener.census import _year_url
+
+    u = _year_url("331", "imports", "GEN_VAL_MO", 2024, "K")
+    check("F29 time= 형식", "time=from%202024-01%20to%202024-12" in u, u)
+    check("F29 공백 인코딩", " " not in u, u)
+
+
 def main() -> int:
     for fn in [f1_ytd_differencing, f2_no_economy_wide_fallback, f3_bea_result_shapes,
                f4_bea_final_demand_excluded, f5_naics_matching_direction,
@@ -698,7 +762,9 @@ def main() -> int:
                f19_key_name_aliases, f20_substitution_axis,
                f21_usaspending_incomplete_quarter, f22_budget_axis_precedence,
                f23_rebound_not_unpriced, f24_rebound_detection,
-               f25_partial_thesis_disclosure, f26_supply_long_run]:
+               f25_partial_thesis_disclosure, f26_supply_long_run,
+               f27_benefit_order, f28_three_year_subset_index,
+               f29_census_time_param]:
         try:
             fn()
         except Exception as e:

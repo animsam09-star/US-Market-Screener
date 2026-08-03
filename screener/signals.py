@@ -169,11 +169,16 @@ def u4_long_term(px: dict) -> Signal:
     """
     rel3 = px.get("rel_3y")
     if rel3 is None:
-        return Signal("U4", "장기 미반영(3년)", None, "nodata", "", "3년 주가 이력 부족")
+        return Signal("U4", "장기 미반영(3년)", None, "nodata", "",
+                      "상장 3년 이상 종목 없음 — 조회 실패가 아니라 이력 부족")
     dd = px.get("drawdown")
     detail = f"3년 상대수익률 {rel3:+.0f}%p"
     if dd is not None:
         detail += f", 52주 고점 대비 {-dd:.1f}%"
+    # 신규 상장 종목이 섞여 일부만으로 잰 경우 그 사실을 숨기지 않는다
+    n3, npx = px.get("n_3y"), px.get("n_px")
+    if n3 and npx and n3 < npx:
+        detail += f" (이력 3년+ {n3}/{npx}종목 기준)"
     return Signal("U4", "장기 미반영(3년)", scale(-rel3, -60, 60), "ok", detail, raw=rel3)
 
 
@@ -344,34 +349,51 @@ def _price_on(series: list, when: date) -> float | None:
     return prior[-1] if prior else None
 
 
-def price_stats(tickers: list[str], prices: dict, bench: list) -> dict:
-    curves = [prices[t] for t in tickers if prices.get(t) and len(prices[t]) > 260]
-    if not curves:
-        return {}
+def _index_from(curves: list) -> list:
+    """공통 날짜 등가중 지수. 날짜가 겹치는 구간만 쓴다."""
     maps = [dict(c) for c in curves]
     common = set(maps[0])
     for m in maps[1:]:
         common &= set(m)
     days = sorted(common)
-    if len(days) < 260:
-        return {}
+    if not days:
+        return []
     bases = [m[days[0]] for m in maps]
-    idx = [(d, statistics.fmean([m[d] / b for m, b in zip(maps, bases)])) for d in days]
+    return [(d, statistics.fmean([m[d] / b for m, b in zip(maps, bases)])) for d in days]
 
-    def rel_over(n: int) -> tuple[float | None, float | None]:
+
+def price_stats(tickers: list[str], prices: dict, bench: list) -> dict:
+    curves = [prices[t] for t in tickers if prices.get(t) and len(prices[t]) > 260]
+    if not curves:
+        return {}
+    idx = _index_from(curves)
+    if len(idx) < 260:
+        return {}
+
+    def rel_over(index: list, n: int) -> tuple[float | None, float | None]:
         """n 거래일 절대·상대 수익률."""
-        if len(idx) < n + 5:
+        if len(index) < n + 5:
             return None, None
-        a = 100.0 * (idx[-1][1] / idx[-n][1] - 1.0)
+        a = 100.0 * (index[-1][1] / index[-n][1] - 1.0)
         if not bench or len(bench) < n + 5:
             return a, None
-        bn, bt = _price_on(bench, days[-1]), _price_on(bench, days[-n])
+        bn, bt = _price_on(bench, index[-1][0]), _price_on(bench, index[-n][0])
         if not (bn and bt):
             return a, None
         return a, a - 100.0 * (bn / bt - 1.0)
 
-    abs_12m, rel_12m = rel_over(min(len(idx), 252))
-    _, rel_3y = rel_over(756)
+    abs_12m, rel_12m = rel_over(idx, min(len(idx), 252))
+
+    # 3년 축은 별도 지수로 잰다. 전 종목 공통 날짜로 지수를 만들면 신규 상장
+    # 종목 하나가 창을 상장일로 잘라 3년 축이 테마째 사라진다(전력기기 GEV 실측 —
+    # 경고는 엉뚱하게 'Yahoo 차단'을 짚었다). 3년 이력이 있는 종목만으로 다시
+    # 지수를 만들고, 몇 종목 기준인지 남긴다.
+    idx3, n_3y = idx, len(curves)
+    if len(idx) < 756 + 5:
+        long_curves = [c for c in curves if len(c) > 760]
+        idx3 = _index_from(long_curves) if long_curves else []
+        n_3y = len(long_curves)
+    _, rel_3y = rel_over(idx3, 756)
 
     # 52주 고점과 그 이후 경과일. '언제 고점이었나'가 눌림의 성격을 가른다 —
     # 최근 고점은 방금 꺾인 것, 오래된 고점은 소화된 것이다.
@@ -390,7 +412,8 @@ def price_stats(tickers: list[str], prices: dict, bench: list) -> dict:
 
     return {"abs_12m": abs_12m, "rel_12m": rel_12m, "rel_3y": rel_3y,
             "drawdown": dd, "peak_age_days": peak_age, "vs_ma200": vs_ma,
-            "rebound": rebound, "index": idx}
+            "rebound": rebound, "index": idx,
+            "n_px": len(curves), "n_3y": n_3y if rel_3y is not None else 0}
 
 
 # ================================================================ 시계열 해석
@@ -506,11 +529,12 @@ def evaluate_theme(theme: dict, tmap: dict, bench: list, series_cache: dict) -> 
 
 
 def per_stock(tickers: list[str], tmap: dict, prices: dict, bench: list) -> list[dict]:
-    """종목별 내역.
+    """종목별 내역 — 수혜가 실적으로 확인되는 순.
 
-    촉매는 테마 전체에 걸리지만, 그게 아직 가격에 안 들어간 정도는 종목마다
-    다르다. 테마가 '어디를 볼까'를 답하면 이 표는 '그중 뭐가 아직 안 움직였나'를
-    답한다. 종목을 고르는 모델이 아니라, 같은 테마 안의 미반영 정도 비교다.
+    촉매는 테마 전체에 걸리지만 실제로 손익에 들어오는 정도는 종목마다 다르다.
+    처음엔 미반영(안 오른) 순으로 올렸는데, '수혜가 없어서 안 오른' 종목이
+    맨 위에 왔다(비료 MOS 실측 — 이익률 0.9%가 1위). 순서 기준을 '실적으로
+    확인되는 수혜'로 바꾸고, 미반영 정도는 색과 열로 계속 보여준다.
     """
     out: list[dict] = []
     for t in tickers:
@@ -550,13 +574,47 @@ def per_stock(tickers: list[str], tmap: dict, prices: dict, bench: list) -> list
             k = common[-1]
             if rev_ttm[k]:
                 row["op_margin"] = 100.0 * eb[k] / rev_ttm[k]
+                # 이익률 개선폭(YoY) — 촉매가 가격 전가·레버리지로 실현되는 증거
+                prev = (k[0] - 1, k[1])
+                if prev in eb and prev in rev_ttm and rev_ttm[prev]:
+                    row["opm_delta"] = (row["op_margin"]
+                                        - 100.0 * eb[prev] / rev_ttm[prev])
         out.append(row)
 
-    # 미반영도 순으로: 상대수익률이 낮고 눌림이 클수록 위
+    return benefit_order(out)
+
+
+def benefit_order(rows: list[dict]) -> list[dict]:
+    """수혜 강도 순 정렬 (각 행에 benefit 0~100 부여).
+
+    수혜 강도 = 촉매가 실제 손익에 들어오는 증거의 세기:
+    매출 성장(수요 전이) 60% + 영업이익률 개선(가격 전가·레버리지) 40%.
+    테마 내 백분위로 매겨 업종 간 절대 수준 차이에 휘둘리지 않는다.
+    재무가 없는 종목은 '판단 근거 없음'이므로 맨 아래로 보낸다.
+    """
+    def pct(key):
+        vals = sorted(r[key] for r in rows if r.get(key) is not None)
+
+        def p(v):
+            if v is None or not vals:
+                return None
+            return 100.0 * sum(1 for x in vals if x <= v) / len(vals)
+        return p
+
+    p_rev, p_opm = pct("rev_yoy"), pct("opm_delta")
+    for r in rows:
+        a, b = p_rev(r.get("rev_yoy")), p_opm(r.get("opm_delta"))
+        if a is None and b is None:
+            r["benefit"] = None
+        elif b is None:
+            r["benefit"] = a
+        elif a is None:
+            r["benefit"] = b
+        else:
+            r["benefit"] = 0.6 * a + 0.4 * b
+
     def key(r):
-        rel = r.get("rel_12m")
-        dd = r.get("drawdown")
-        if rel is None:
-            return 1e9
-        return rel - (dd or 0) * 0.3
-    return sorted(out, key=key)
+        b = r.get("benefit")
+        # 백분위 동점은 매출 성장 절대값으로 가른다
+        return (b if b is not None else -1.0, r.get("rev_yoy") or -1e9)
+    return sorted(rows, key=key, reverse=True)
