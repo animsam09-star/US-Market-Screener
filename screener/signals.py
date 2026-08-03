@@ -570,6 +570,10 @@ def per_stock(tickers: list[str], tmap: dict, prices: dict, bench: list) -> list
     for t in tickers:
         px = prices.get(t) or []
         row: dict = {"ticker": t}
+        # 1M/3M 절대 상승률 — 표시용. 짧은 구간이라 이력 요건도 짧다.
+        for key, back in (("ret_1m", 21), ("ret_3m", 63)):
+            if len(px) > back + 2:
+                row[key] = 100.0 * (px[-1][1] / px[-back][1] - 1.0)
         if len(px) > 260:
             back = min(len(px), 252)
             abs12 = 100.0 * (px[-1][1] / px[-back][1] - 1.0)

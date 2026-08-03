@@ -445,8 +445,9 @@ def _stock_table(r: ThemeResult) -> str:
             f'<td class="num">{num("upside", "{:.0f}", "")}</td>'
             f'<td class="num">{num("rev_yoy", "{:+.1f}", "%")}</td>'
             f'<td class="num">{num("opm_delta", "{:+.1f}", "%p")}</td>'
-            f'<td class="num">{num("rel_12m", "{:+.1f}", "%p")}</td>'
-            f'<td class="num">{num("drawdown", "{:.0f}", "%")}</td></tr>')
+            f'<td class="num">{num("ret_1m", "{:+.1f}", "%")}</td>'
+            f'<td class="num">{num("ret_3m", "{:+.1f}", "%")}</td>'
+            f'<td class="num">{num("abs_12m", "{:+.1f}", "%")}</td></tr>')
     if not rows:
         return ""
     return (
@@ -454,17 +455,19 @@ def _stock_table(r: ThemeResult) -> str:
         f'({len(r.stocks)}개 · 수혜 × 상승여력 순)</summary>'
         '<table class="stk"><thead><tr><th>티커 · 회사명</th>'
         '<th class="num">종합</th><th class="num">수혜</th>'
-        '<th class="num">상승여력</th>'
-        '<th class="num">매출 YoY</th><th class="num">이익률 개선</th>'
-        '<th class="num">상대수익 12M</th>'
-        '<th class="num">고점대비</th></tr></thead>'
+        '<th class="num">여력</th>'
+        '<th class="num">매출YoY</th><th class="num">이익개선</th>'
+        '<th class="num">1M</th><th class="num">3M</th>'
+        '<th class="num">12M</th></tr></thead>'
         f'<tbody>{"".join(rows)}</tbody></table>'
         '<p class="stknote"><strong>종합 = √(수혜 × 상승여력)</strong> — 실적으로 '
         '수혜가 확인되면서(매출 성장·가속·이익률 개선) 아직 가격에 덜 들어간 '
-        '종목이 위. <strong>수혜가 테마 중앙(50) 미달이면 종합을 절반</strong>으로 '
-        '깎는다 — ‘좋은 기업 중에서’가 먼저고, 많이 빠졌다는 것만으로는 위로 '
-        '못 온다. 재무 미확보(—)는 근거가 없어 맨 아래. 종목을 고르는 모델이 '
-        '아니라 같은 테마 안의 우선순위다.</p></details>')
+        '종목이 위. 수혜·여력은 <strong>테마 내 상대 백분위</strong>다 — 수혜 '
+        '100은 ‘이 테마 종목 중 실적 1등’이지 절대평가가 아니다. 수혜가 테마 '
+        '중앙(50) 미달이면 종합을 절반으로 깎는다 — ‘좋은 기업 중에서’가 먼저고, '
+        '많이 빠졌다는 것만으로는 위로 못 온다. 재무 미확보(—)는 근거가 없어 '
+        '맨 아래. 1M/3M/12M 은 절대 주가 상승률. 종목을 고르는 모델이 아니라 '
+        '같은 테마 안의 우선순위다.</p></details>')
 
 
 def _priority_list(ranked: list[ThemeResult]) -> str:
@@ -686,8 +689,8 @@ font-variant-numeric:tabular-nums}
 border:1px solid var(--border);font-size:11.5px}
 .stocks{margin-top:12px;font-size:12px}
 .stocks summary{cursor:pointer;color:var(--text-secondary)}
-.stk{margin-top:8px;font-size:12px}
-.stk th,.stk td{border-bottom:1px solid var(--grid);padding:4px 8px;text-align:left}
+.stk{margin-top:8px;font-size:12px;width:auto;max-width:100%}
+.stk th,.stk td{border-bottom:1px solid var(--grid);padding:4px 6px;text-align:left}
 .stk thead th{color:var(--muted);font-size:10.5px;text-transform:uppercase;
 letter-spacing:.04em;font-weight:600;white-space:nowrap}
 .stk th[scope=row]{font-weight:600;font-variant-numeric:tabular-nums;white-space:nowrap}

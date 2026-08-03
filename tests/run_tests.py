@@ -765,6 +765,78 @@ def f29_census_time_param():
     check("F29 공백 인코딩", " " not in u, u)
 
 
+# ---------------------------------------------------------------- F36
+def f36_xbrl_tag_and_fiscal_calendar():
+    """낡은 태그가 진짜 태그를 가리고, 4-4-5 달력이 분기를 어긋나게 한다.
+
+    사고(방산 실측): ①LMT — 옛 태그에 2017~19년 7건만 남아 있는데 '첫 번째로
+    결과가 나온 태그 승리' 규칙이 그걸 채택, 38분기짜리 Revenues 를 가렸다.
+    ②LHX — 분기말이 7/4·1/2 라 달력 월로 매기면 Q2가 Q3, Q4가 이듬해 Q1이
+    되고 연간값이 분기에 섞여 TTM 이 오염됐다. 결과: 6종목 중 3종목 재무가
+    비어 HII 수혜 백분위가 3종목 기준 100으로 부풀었다.
+    """
+    from screener.sources import xbrl_quarterly
+
+    def flow(tag_rows):
+        return {"facts": {"us-gaap": tag_rows}}
+
+    def entries(rows):
+        return {"units": {"USD": [
+            {"start": s, "end": e, "val": v, "filed": e} for s, e, v in rows]}}
+
+    # ① 태그 선택: 첫 태그(낡음, 2017)보다 최신 이력이 긴 태그를 골라야 한다
+    facts = flow({
+        "RevenueFromContractWithCustomerExcludingAssessedTax": entries([
+            ("2017-01-01", "2017-03-31", 100), ("2017-01-01", "2017-06-30", 210)]),
+        "Revenues": entries([
+            ("2024-01-01", "2024-03-31", 500), ("2024-01-01", "2024-06-30", 1050),
+            ("2024-01-01", "2024-09-30", 1650), ("2024-01-01", "2024-12-31", 2300)]),
+    })
+    q = xbrl_quarterly(facts, "revenue")
+    check("F36 최신·최다 태그 채택", max(q)[0] == 2024 and len(q) == 4,
+          f"{sorted(q)}")
+
+    # ② 4-4-5 달력: 7/4 마감은 Q2, 1/2 마감은 전년 Q4
+    facts2 = flow({"Revenues": entries([
+        ("2025-01-04", "2025-04-04", 500),
+        ("2025-01-04", "2025-07-04", 1010),
+        ("2025-01-04", "2025-10-03", 1530),
+        ("2025-01-04", "2026-01-02", 2060),
+    ])})
+    q2 = xbrl_quarterly(facts2, "revenue")
+    check("F36 7/4 마감 → Q2", (2025, 2) in q2 and abs(q2[(2025, 2)] - 510) < 1,
+          f"{sorted(q2)}")
+    check("F36 1/2 마감 → 전년 Q4", (2025, 4) in q2 and (2026, 1) not in q2,
+          f"{sorted(q2)}")
+
+    # ③ 연간값을 분기 기간으로 태깅한 공시(LHX 실측 21.86B vs 5.66B) —
+    # 같은 분기에 상충 후보가 오면 이웃 분기 중앙값에 가까운 쪽을 채택
+    facts3 = flow({"Revenues": entries([
+        ("2025-01-04", "2025-04-04", 500),
+        ("2025-01-04", "2025-07-04", 1010),
+        ("2025-01-04", "2025-10-03", 1530),
+        ("2025-01-04", "2026-01-02", 2060),
+        ("2025-10-04", "2026-01-02", 2060),   # 연간값이 Q4 기간에 태깅됨
+    ])})
+    q3 = xbrl_quarterly(facts3, "revenue")
+    check("F36 연간값 오태깅 방어", abs(q3[(2025, 4)] - 530) < 1,
+          f"Q4={q3.get((2025, 4))}")
+
+    # ④ 경쟁 후보조차 없는 단독 연간값(진짜 LHX 케이스): 분기가 전부 90일
+    # 개별 보고인데 Q4 자리에만 연간값이 태깅됨 → '의심값 − 앞 3분기 합' 복원
+    rows4 = []
+    qs = [("2024-01-06", "2024-04-05", 480), ("2024-04-06", "2024-07-05", 490),
+          ("2024-07-06", "2024-10-04", 500), ("2024-10-05", "2025-01-03", 505),
+          ("2025-01-04", "2025-04-04", 510), ("2025-04-05", "2025-07-04", 520),
+          ("2025-07-05", "2025-10-03", 530),
+          ("2025-10-04", "2026-01-02", 2100)]     # 연간값 오태깅 (진짜는 540)
+    facts4 = flow({"Revenues": entries(qs)})
+    q4 = xbrl_quarterly(facts4, "revenue")
+    check("F36 단독 연간값 복원", abs(q4[(2025, 4)] - 540) < 1,
+          f"Q4={q4.get((2025, 4))}")
+    check("F36 정상 분기 무손상", abs(q4[(2025, 3)] - 530) < 1)
+
+
 # ---------------------------------------------------------------- F35
 def f35_replacement_needs_trigger():
     """'고객 설비가 늙었다'만으로 점수를 주면 안 된다 — 백테스트 실측 역방향.
@@ -963,7 +1035,8 @@ def main() -> int:
                f27_benefit_order, f28_three_year_subset_index,
                f29_census_time_param, f30_penetration_units, f31_revenue_acceleration,
                f32_asof_no_future_leak, f33_forward_return_alive_only,
-               f34_asof_no_snapshot_fallback, f35_replacement_needs_trigger]:
+               f34_asof_no_snapshot_fallback, f35_replacement_needs_trigger,
+               f36_xbrl_tag_and_fiscal_calendar]:
         try:
             fn()
         except Exception as e:

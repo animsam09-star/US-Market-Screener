@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import io
 import re
+import statistics
 import urllib.parse
 import zipfile
 from pathlib import Path
@@ -231,8 +232,11 @@ STOCK_CONCEPTS = {"inventory", "ppe_gross", "accum_dep", "ppe_net", "cash", "deb
 
 
 def _quarter_of(d: str) -> tuple[int, int] | None:
+    """마감일 → 분기. 마감일에서 10일을 빼고 매긴다 — 4-4-5 회계달력 기업
+    (LHX 등)은 분기말이 7/4·1/2 처럼 다음 달 초로 넘어가는데, 달력 월 그대로
+    매기면 Q2가 Q3, Q4가 이듬해 Q1이 되어 TTM 이 오염된다(방산 실측)."""
     try:
-        dt = datetime.strptime(d, "%Y-%m-%d").date()
+        dt = datetime.strptime(d, "%Y-%m-%d").date() - timedelta(days=10)
     except (ValueError, TypeError):
         return None
     return dt.year, (dt.month - 1) // 3 + 1
@@ -275,8 +279,14 @@ def xbrl_periods(facts: dict, concept: str) -> list[list[tuple]]:
 
 def quarterly_from_periods(tag_lists: list[list[tuple]], concept: str,
                            asof: str | None = None) -> dict[tuple[int, int], float]:
-    """원시 기간 목록 → 분기 시계열. asof 는 접수일(filed) 컷."""
+    """원시 기간 목록 → 분기 시계열. asof 는 접수일(filed) 컷.
+
+    태그는 '첫 번째로 결과가 나온 것'이 아니라 **가장 최신이고 긴 것**을
+    고른다 — LMT 는 옛 태그에 2017~19년 7건이 남아 있어 그게 먼저 걸리면
+    38분기짜리 진짜 태그(Revenues)가 통째로 가려졌다(방산 실측).
+    """
     is_stock = concept in STOCK_CONCEPTS
+    best: dict[tuple[int, int], float] = {}
     for rows in tag_lists:
         # (start, end) -> val, 수정 공시는 (asof 이내에서) 가장 최근 접수분 채택
         periods: dict[tuple[str, str], tuple[str, float]] = {}
@@ -296,8 +306,8 @@ def quarterly_from_periods(tag_lists: list[list[tuple]], concept: str,
                 k = _quarter_of(end)
                 if k:
                     out[k] = v
-            if out:
-                return out
+            if out and (not best or (max(out), len(out)) > (max(best), len(best))):
+                best = out
             continue
 
         # 유량: 미국 기업은 누적(YTD)으로 보고한다. 같은 start 를 공유하는 기간들을
@@ -306,7 +316,7 @@ def quarterly_from_periods(tag_lists: list[list[tuple]], concept: str,
         for (start, end), (_, v) in periods.items():
             by_start.setdefault(start, []).append((end, v))
 
-        discrete: dict[tuple[int, int], float] = {}
+        cand: dict[tuple[int, int], list[float]] = {}
         for start, items in by_start.items():
             items.sort()
             prev_end, prev_val = start, 0.0
@@ -319,11 +329,68 @@ def quarterly_from_periods(tag_lists: list[list[tuple]], concept: str,
                 if 80 <= days <= 100:          # 직전 구간과의 차이가 딱 한 분기
                     k = _quarter_of(end)
                     if k:
-                        discrete.setdefault(k, val - prev_val)
+                        cand.setdefault(k, []).append(val - prev_val)
                 prev_end, prev_val = end, val
-        if discrete:
-            return discrete
-    return {}
+        discrete = _repair_annual_in_quarter(_resolve_quarters(cand))
+        if discrete and (not best
+                         or (max(discrete), len(discrete)) > (max(best), len(best))):
+            best = discrete
+    return best
+
+
+def _repair_annual_in_quarter(q: dict) -> dict:
+    """연간 누적값이 분기 하나에 통째로 태깅된 공시를 복원한다.
+
+    LHX 실측: (start 10/4, end 1/2, 90일) 기간에 연간값 21.86B 가 태깅돼
+    분기 시계열에 그대로 박혔고 TTM·YoY(+83%)가 전부 틀어졌다. 경쟁 후보가
+    없어 중앙값 판정도 못 잡는다. 앞 3개 분기가 있으면 '의심값 − 앞 3분기 합'
+    으로 진짜 분기를 복원하고, 복원 불가면 버린다(오염보다 구멍이 낫다).
+    """
+    if len(q) < 6:
+        return q
+    vals = sorted(abs(v) for v in q.values())
+    med = vals[len(vals) // 2]
+    if med <= 0:
+        return q
+
+    def back(k, n):
+        idx = k[0] * 4 + (k[1] - 1) - n
+        return idx // 4, idx % 4 + 1
+
+    out = dict(q)
+    for k in sorted(q):
+        v = q[k]
+        if abs(v) <= 2.5 * med:
+            continue
+        prevs = [out.get(back(k, i)) for i in (1, 2, 3)]
+        if all(p is not None and abs(p) <= 2.5 * med for p in prevs):
+            fixed = v - sum(prevs)
+            if 0.3 * med <= abs(fixed) <= 2.5 * med:
+                out[k] = fixed
+                continue
+        del out[k]
+    return out
+
+
+def _resolve_quarters(cand: dict) -> dict:
+    """같은 분기에 서로 다른 값이 오면 이웃 분기 중앙값에 가까운 쪽을 택한다.
+
+    LHX 실측: 연간값(21.86B)을 분기 기간(90일 span)으로 태깅한 공시가 있어
+    진짜 분기값(5.66B)과 경쟁했다. '먼저 온 것 승리'는 순서 운에 좌우된다 —
+    후보가 2.5배 넘게 벌어지면 정상 분기들의 중앙값으로 판정한다.
+    """
+    uni = [vs[0] for vs in cand.values() if len(vs) == 1]
+    med = statistics.median(uni) if uni else None
+    out: dict = {}
+    for k, vs in cand.items():
+        lo = min(abs(x) for x in vs)
+        if len(vs) == 1 or max(abs(x) for x in vs) <= 2.5 * max(lo, 1e-9):
+            out[k] = vs[0]
+        elif med is not None:
+            out[k] = min(vs, key=lambda x: abs(x - med))
+        else:
+            out[k] = min(vs, key=abs)
+    return out
 
 
 def xbrl_quarterly(facts: dict, concept: str,
