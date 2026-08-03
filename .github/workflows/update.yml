@@ -1,11 +1,13 @@
 name: 스크리너 갱신
 
-# 시황에 맞춰 자동 갱신하고, 비공개 URL(Cloudflare Pages + Access)로 배포한다.
-#  - 평일 미국장 마감 후 하루 한 번 (21:30 UTC)
+# 시황에 맞춰 자동 갱신하고 Cloudflare 로 배포한다.
+#  - 평일 미국장 마감 후 하루 한 번 (22:30 UTC = 한국 07:30)
+#    21:30 이었는데 겨울(서머타임 해제)엔 마감이 21:00 UTC 라 마감 '전'에
+#    돌게 되는 문제가 있어 22:30 으로 옮김 — 연중 마감 후가 보장된다.
 #  - Actions 탭에서 수동 실행 가능
 on:
   schedule:
-    - cron: "30 21 * * 1-5"
+    - cron: "30 22 * * 1-5"
   workflow_dispatch:
   push:
     branches: [main]
