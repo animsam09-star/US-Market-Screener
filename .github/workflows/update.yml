@@ -202,12 +202,10 @@ jobs:
               echo "- 시크릿: 설정됨"
               echo "- 프로젝트 준비: ${{ steps.cfproj.outcome }} (이미 있으면 failure 가 정상)"
               echo "- 배포: ${{ steps.cfdeploy.outcome }}"
-              if [ -z "$SITE_PW" ]; then
-                echo "- **비밀번호 미설정 — 사이트가 공개 상태입니다.**"
-                echo "  GitHub 시크릿 \`SCREENER_PASSWORD\` 를 추가하세요."
-              else
-                echo "- 비밀번호: 설정됨 (등록 ${{ steps.cfsecret.outcome }})"
-                echo "- 아이디는 \`screener\`, 비밀번호는 시크릿 값"
+              # 공개 여부는 사용자 선택 사항 — 경고하지 않는다.
+              # (잠그고 싶어지면 SCREENER_PASSWORD 시크릿만 추가하면 된다)
+              if [ -n "$SITE_PW" ]; then
+                echo "- 잠금: 활성 (아이디 screener)"
               fi
               echo "- 주소: https://us-market-screener.pages.dev"
               python diagnose_output.py || echo "- 진단 스크립트 실패"
