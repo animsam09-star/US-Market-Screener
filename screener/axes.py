@@ -368,7 +368,15 @@ def _shift(d: date, months: int) -> date:
 # ---------------------------------------------------------------- ④ 교체주기
 
 def a4_replacement(cust_fin: dict) -> Signal:
-    """고객의 설비가 늙었고, 교체를 미뤄왔는가. 대상은 테마가 아니라 고객이다."""
+    """고객의 설비가 늙었고, **교체가 실제로 시작됐는가**. 대상은 고객이다.
+
+    백테스트 실측(IC −0.34)이 초판을 반박했다: '늙음 + 캐펙스 억제'만으로
+    점수를 줬더니 고득점 그룹(제지·트럭 — 고객 설비 노후)의 이후 12개월
+    수익률이 −2.2%p, 저득점 그룹은 +26.6%p 였다. 늙음은 교체 수요가 아니라
+    정체 산업의 특징일 수 있다 — 교체는 미룰 수 있는 수요고, 오래 미뤘다고
+    반드시 오는 게 아니다. 그래서 늙음은 '잠재력'으로만 두고, 고객 capex 가
+    실제로 상승 전환(트리거)했을 때만 촉매로 친다.
+    """
     K = ("A4", "④ 교체주기(고객 설비)")
     if not cust_fin:
         return _nodata(*K, "고객군 미지정 — customers.tickers 필요")
@@ -387,7 +395,7 @@ def a4_replacement(cust_fin: dict) -> Signal:
     years = suppressed / 4.0
 
     base = rank if rank is not None else (scale(age, 0.35, 0.75) or 0)
-    sc = base * min(0.4 + years / 4.0, 1.0)
+    potential = base * min(0.4 + years / 4.0, 1.0)
     detail = (f"고객 설비 소진율 {age * 100:.0f}%"
               + (f" (자체 이력 {rank:.0f}분위)" if rank is not None else "")
               + f", capex<감가상각 지속 {years:.1f}년")
@@ -400,14 +408,26 @@ def a4_replacement(cust_fin: dict) -> Signal:
             return _reject(*K, f"고객 산업 축소 — 고객 매출 YoY {cur:+.1f}%. "
                                "쇠퇴 산업은 늙은 설비를 교체하지 않고 폐기한다", detail)
     else:
-        return Signal(*K, sc, "unconfirmed", detail, "확증 실패: 고객 매출 추이 확인 불가")
+        return Signal(*K, potential * 0.25, "unconfirmed", detail,
+                      "확증 실패: 고객 매출 추이 확인 불가")
 
-    # 확증: 교체가 실제로 시작됐는가 (capex/D&A 가 1.0 을 상향 돌파)
-    if ratios and ratios[-1][1] >= 1.0 and len(ratios) > 4 and ratios[-5][1] < 1.0:
-        return Signal(*K, min(100.0, sc * 1.15), "ok",
-                      detail + f", 고객 capex/감가상각 {ratios[-1][1]:.2f} — 교체 시작됨")
-    return Signal(*K, sc, "unconfirmed", detail,
-                  "확증 실패: 고객 capex/감가상각이 아직 1.0을 넘지 못함 — 교체 개시 전")
+    # 트리거: 고객 capex/감가상각의 상승 전환 또는 1.0 상향 돌파.
+    # 이게 없으면 '늙음'은 켜진 촉매가 아니라 잠재력이다 — 강하게 깎는다.
+    if len(ratios) >= 5:
+        recent = [v for _, v in ratios[-5:]]
+        crossed = recent[-1] >= 1.0 and min(recent[:-1]) < 1.0
+        rising = recent[-1] > recent[0] + 0.05
+        if crossed:
+            return Signal(*K, min(100.0, potential * 1.15), "ok",
+                          detail + f", 고객 capex/감가상각 {recent[-1]:.2f} — "
+                                   "1.0 상향 돌파, 교체 시작됨")
+        if rising:
+            return Signal(*K, potential, "unconfirmed",
+                          detail + f", capex/감가상각 {recent[0]:.2f}→{recent[-1]:.2f} 상승 중",
+                          "1.0 미달이나 상승 전환 — 교체 개시 초기일 수 있음")
+    return Signal(*K, potential * 0.25, "unconfirmed", detail,
+                  "교체 개시 증거 없음(고객 capex 정체) — 늙음만으로는 촉매가 "
+                  "아니다(백테스트: 이 상태의 고득점은 이후 수익률이 낮았다)")
 
 
 # ---------------------------------------------------------------- ⑤ 정책

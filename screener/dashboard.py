@@ -423,11 +423,11 @@ def _verdict(r: ThemeResult) -> tuple[str, str, str]:
 
 
 def _stock_table(r: ThemeResult) -> str:
-    """종목별 내역 — 수혜가 실적으로 확인되는 순.
+    """종목별 내역 — 수혜 × 상승여력 순.
 
-    미반영(안 오른) 순으로 올리면 '수혜가 없어서 안 오른' 종목이 맨 위에 온다
-    (비료 MOS 실측). 매출 성장·이익률 개선이 확인되는 종목을 위로 올리고,
-    이미 오른 정도는 색(빨강)과 상대수익 열로 보여준다.
+    '미반영 순'은 수혜 없는 종목을(MOS 실측), '수혜 순'은 이미 다 오른 종목을
+    맨 위에 올렸다. 원하는 답은 '가장 좋은 기업 중 아직 여력이 남은 것' —
+    테마 순위와 같은 기하평균으로 두 조건을 동시에 요구한다.
     """
     rows = []
     for s in r.stocks:
@@ -440,31 +440,31 @@ def _stock_table(r: ThemeResult) -> str:
         rows.append(
             f'<tr class="{cls}"><th scope="row">{_e(s["ticker"])}'
             f'<span class="coname">{_e(NAMES.get(s["ticker"].upper(), ""))}</span></th>'
+            f'<td class="num"><strong>{num("total", "{:.0f}", "")}</strong></td>'
             f'<td class="num">{num("benefit", "{:.0f}", "")}</td>'
+            f'<td class="num">{num("upside", "{:.0f}", "")}</td>'
             f'<td class="num">{num("rev_yoy", "{:+.1f}", "%")}</td>'
-            f'<td class="num">{num("rev_accel", "{:+.1f}", "%p")}</td>'
             f'<td class="num">{num("opm_delta", "{:+.1f}", "%p")}</td>'
-            f'<td class="num">{num("op_margin", "{:.1f}", "%")}</td>'
             f'<td class="num">{num("rel_12m", "{:+.1f}", "%p")}</td>'
             f'<td class="num">{num("drawdown", "{:.0f}", "%")}</td></tr>')
     if not rows:
         return ""
     return (
         '<details class="stocks"><summary>종목별 내역 '
-        f'({len(r.stocks)}개 · 수혜 강한 순)</summary>'
+        f'({len(r.stocks)}개 · 수혜 × 상승여력 순)</summary>'
         '<table class="stk"><thead><tr><th>티커 · 회사명</th>'
-        '<th class="num">수혜</th>'
-        '<th class="num">매출 YoY</th><th class="num">매출 가속</th>'
-        '<th class="num">이익률 개선</th>'
-        '<th class="num">영업이익률</th><th class="num">상대수익 12M</th>'
+        '<th class="num">종합</th><th class="num">수혜</th>'
+        '<th class="num">상승여력</th>'
+        '<th class="num">매출 YoY</th><th class="num">이익률 개선</th>'
+        '<th class="num">상대수익 12M</th>'
         '<th class="num">고점대비</th></tr></thead>'
         f'<tbody>{"".join(rows)}</tbody></table>'
-        '<p class="stknote">테마의 촉매가 <strong>실적으로 확인되는 종목</strong>을 '
-        '위로 올렸다. 수혜 = 매출 성장 45% + 매출 가속 15% + 이익률 개선 40% '
-        '(테마 내 백분위). ‘매출 가속’은 성장률의 변화 — 이미 성장 중과 지금 막 '
-        '꺾여 올라오는 중을 가른다. 빨간 행은 이미 많이 오른 종목이니 반영 정도를 '
-        '함께 볼 것. 재무 미확보(—)는 근거가 없어 맨 아래. 종목을 고르는 모델이 '
-        '아니다.</p></details>')
+        '<p class="stknote"><strong>종합 = √(수혜 × 상승여력)</strong> — 실적으로 '
+        '수혜가 확인되면서(매출 성장·가속·이익률 개선) 아직 가격에 덜 들어간 '
+        '종목이 위. <strong>수혜가 테마 중앙(50) 미달이면 종합을 절반</strong>으로 '
+        '깎는다 — ‘좋은 기업 중에서’가 먼저고, 많이 빠졌다는 것만으로는 위로 '
+        '못 온다. 재무 미확보(—)는 근거가 없어 맨 아래. 종목을 고르는 모델이 '
+        '아니라 같은 테마 안의 우선순위다.</p></details>')
 
 
 def _priority_list(ranked: list[ThemeResult]) -> str:

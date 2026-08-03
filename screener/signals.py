@@ -432,9 +432,13 @@ def price_stats(tickers: list[str], prices: dict, bench: list) -> dict:
     ma200 = statistics.fmean([v for _, v in idx[-200:]]) if len(idx) >= 200 else None
     vs_ma = (100.0 * (idx[-1][1] / ma200 - 1.0)) if ma200 else None
 
-    # 되돌림 판정: 3년간 크게 초과 상승했는데 고점이 아직 최근이면
-    # 그건 미반영이 아니라 과열의 되돌림이다.
-    rebound = bool(rel_3y is not None and rel_3y > 60 and peak_age < 250)
+    # 되돌림 판정: 3년간 크게 초과 상승 + 최근 고점 + **이미 꺾임(200일선 아래)**.
+    # 초판은 마지막 조건이 없어 상승 지속 테마까지 걸렀다 — 백테스트 실측:
+    # 걸러진 것과 일반의 이후 수익률이 같아 변별력이 0이었고, 특히 2023년엔
+    # 추세가 살아있는 테마(평균 +14.5%p)를 잘못 걸렀다. 추세가 살아있으면
+    # 그건 되돌림이 아니라 진행 중인 상승이다.
+    rebound = bool(rel_3y is not None and rel_3y > 60 and peak_age < 250
+                   and vs_ma is not None and vs_ma < 0)
 
     return {"abs_12m": abs_12m, "rel_12m": rel_12m, "rel_3y": rel_3y,
             "drawdown": dd, "peak_age_days": peak_age, "vs_ma200": vs_ma,
@@ -626,11 +630,18 @@ BENEFIT_PARTS = [("rev_yoy", 0.45), ("rev_accel", 0.15), ("opm_delta", 0.40)]
 
 
 def benefit_order(rows: list[dict]) -> list[dict]:
-    """수혜 강도 순 정렬 (각 행에 benefit 0~100 부여).
+    """수혜 × 상승여력 순 정렬 (각 행에 benefit·upside·total 0~100 부여).
 
-    수혜 강도 = 촉매가 실제 손익에 들어오는 증거의 세기. 테마 내 백분위로
-    매겨 업종 간 절대 수준 차이에 휘둘리지 않는다. 없는 지표는 가중치를
-    남은 지표로 재배분하고, 전부 없는 종목은 '판단 근거 없음'으로 맨 아래.
+    세 번에 걸쳐 확정된 기준이다.
+      1차 '미반영 순' → 수혜가 없어서 안 오른 종목이 1위(비료 MOS, 이익률 0.9%).
+      2차 '수혜 순'   → 이미 다 오른 우량이 1위로 남음. 사용자가 원하는 건
+                        '가장 좋은 기업 중 상승여력이 남은 것'.
+      3차(현재)       → 테마 순위와 같은 기하평균: √(수혜 × 상승여력).
+                        한쪽이 0이면 0 — 수혜 없는 눌림도, 여력 없는 우량도
+                        1위가 아니다.
+    수혜 = 매출 성장·가속·이익률 개선(테마 내 백분위). 상승여력 = 아직 덜
+    반영된 정도(상대수익 낮을수록·눌림 클수록). 재무가 없는 종목은 근거가
+    없으므로 맨 아래.
     """
     def pct(key):
         vals = sorted(r[key] for r in rows if r.get(key) is not None)
@@ -651,8 +662,34 @@ def benefit_order(rows: list[dict]) -> list[dict]:
                 tot += w
         r["benefit"] = (acc / tot) if tot else None
 
+    # 상승여력: 테마 내 '덜 반영' 백분위. 상대수익이 낮고 눌림이 클수록 크다.
+    def unmoved(r):
+        rel = r.get("rel_12m")
+        if rel is None:
+            return None
+        return -(rel - 0.3 * (r.get("drawdown") or 0.0))
+
+    uv = [unmoved(r) for r in rows]
+    uvals = sorted(v for v in uv if v is not None)
+    for r, v in zip(rows, uv):
+        r["upside"] = (100.0 * sum(1 for x in uvals if x <= v) / len(uvals)
+                       if v is not None and uvals else None)
+
+    for r in rows:
+        b, u = r.get("benefit"), r.get("upside")
+        if b is None:
+            r["total"] = None                      # 수혜 근거 없음 — 순위 불가
+        elif u is None:
+            r["total"] = b                         # 주가 이력 없으면 수혜만으로
+        else:
+            t = (b * u) ** 0.5
+            # '좋은 기업 중'이 먼저다. 수혜가 테마 중앙 미달이면 여력이 아무리
+            # 커도 절반 — 안 그러면 최다 하락 종목이 여력 100으로 또 1위가
+            # 된다(비료 MOS 실측: 이익률 악화 중인데 √(43×100)=66 으로 1위).
+            r["total"] = t * 0.5 if b < 50 else t
+
     def key(r):
-        b = r.get("benefit")
-        # 백분위 동점은 매출 성장 절대값으로 가른다
-        return (b if b is not None else -1.0, r.get("rev_yoy") or -1e9)
+        t = r.get("total")
+        return (t if t is not None else -1.0,
+                r.get("benefit") or -1.0, r.get("rev_yoy") or -1e9)
     return sorted(rows, key=key, reverse=True)

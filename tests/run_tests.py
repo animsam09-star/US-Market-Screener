@@ -597,6 +597,16 @@ def f24_rebound_detection():
           str(st["peak_age_days"]))
     check("F24 200일선 대비 산출", st.get("vs_ma200") is not None)
 
+    # 추세가 살아있으면(200일선 위) 되돌림이 아니다 — 백테스트 실측: 옛 정의는
+    # 2023년 상승 지속 테마까지 걸렀고(걸러진 것 평균 +14.5%p) 변별력이 0이었다.
+    # '이미 꺾인 것'(200일선 아래)만 되돌림으로 필터한다.
+    strong = [(d, 100.0 + i * 0.25) for i, d in enumerate(days[:1050])]
+    strong += [(d, strong[-1][1] * (1 - 0.0004 * (i + 1)))   # 얕은 눌림, 선 위
+               for i, d in enumerate(days[1050:])]
+    st2 = price_stats(["X"], {"X": strong}, bench)
+    check("F24 추세 유지 중이면 되돌림 아님", st2.get("rebound") is False,
+          f"vs_ma={st2.get('vs_ma200'):.1f} rebound={st2.get('rebound')}")
+
 
 # ---------------------------------------------------------------- F25
 def f25_partial_thesis_disclosure():
@@ -688,10 +698,12 @@ def f26_supply_long_run():
 
 # ---------------------------------------------------------------- F27
 def f27_benefit_order():
-    """종목 정렬은 '수혜가 실적으로 확인되는' 순.
+    """종목 정렬은 √(수혜 × 상승여력) — 좋은 기업 중 여력이 남은 것.
 
-    사고: 미반영 순으로 올렸더니 '수혜가 없어서 안 오른' 종목(비료 MOS,
-    이익률 0.9%)이 1위로 보였다. 매출 성장 + 이익률 개선 순으로 바꾼다.
+    사고 1: 미반영 순 → 수혜가 없어서 안 오른 종목(MOS, 이익률 0.9%)이 1위.
+    사고 2: 수혜 순 → 이미 다 오른 우량이 1위로 남음. 사용자: "내가 알고 싶은
+    건 가장 좋은 기업 중 상승여력이 많이 남은 기업이야."
+    기하평균이라 한쪽이 0이면 종합도 0이다.
     """
     from screener.signals import benefit_order
 
@@ -703,11 +715,14 @@ def f27_benefit_order():
     ]
     out = benefit_order(rows)
     order = [r["ticker"] for r in out]
-    check("F27 실적 최강(CF)이 1위", order[0] == "CF", str(order))
+    check("F27 수혜+여력 균형(CF)이 1위", order[0] == "CF", str(order))
     check("F27 재무 없는 종목(IPI)이 꼴찌", order[-1] == "IPI", str(order))
-    check("F27 이익률 악화(MOS)는 아래쪽", order.index("MOS") > order.index("UAN"),
-          str(order))
-    check("F27 benefit 점수 부여", all("benefit" in r for r in out))
+    check("F27 최다 급등(UAN)은 여력 잠식으로 밀림",
+          order.index("UAN") > order.index("CF"), str(order))
+    check("F27 수혜 미달 눌림(MOS)은 '좋은 기업들' 아래",
+          order.index("MOS") > order.index("UAN"), str(order))
+    check("F27 종합·수혜·여력 점수 부여",
+          all("total" in r and "benefit" in r and "upside" in r for r in out))
 
 
 # ---------------------------------------------------------------- F28
@@ -748,6 +763,41 @@ def f29_census_time_param():
     u = _year_url("331", "imports", "GEN_VAL_MO", 2024, "K")
     check("F29 time= 형식", "time=from%202024-01%20to%202024-12" in u, u)
     check("F29 공백 인코딩", " " not in u, u)
+
+
+# ---------------------------------------------------------------- F35
+def f35_replacement_needs_trigger():
+    """'고객 설비가 늙었다'만으로 점수를 주면 안 된다 — 백테스트 실측 역방향.
+
+    사고: ④교체주기 IC −0.34. 고득점 그룹(제지·트럭 — 고객 설비 노후)의 이후
+    12개월 수익률이 −2.2%p, 저득점 그룹은 +26.6%p. 늙음은 이 표본에서 교체
+    수요가 아니라 정체 산업의 특징이었다. 교체가 '시작된' 증거(고객 capex/감가
+    상승 전환)가 있어야 촉매다.
+    """
+    from screener.axes import a4_replacement
+
+    def fin(ratios):
+        return {"ppe_age": 0.62, "ppe_age_hist": [0.4, 0.45, 0.5, 0.55, 0.6, 0.62],
+                "capex_dep_series": ratios,
+                "rev_yoy_series": [((2024, q), 2.0) for q in range(1, 5)]}
+
+    ks = [(2023, 1), (2023, 2), (2023, 3), (2023, 4), (2024, 1), (2024, 2)]
+    rising = fin(list(zip(ks, [0.85, 0.88, 0.92, 0.97, 1.02, 1.08])))
+    flat = fin(list(zip(ks, [0.85, 0.84, 0.86, 0.85, 0.84, 0.85])))
+    s_up = a4_replacement(rising)
+    s_flat = a4_replacement(flat)
+    check("F35 1.0 돌파는 확증 + 트리거 없음보다 뚜렷이 높음",
+          s_up.status == "ok" and (s_up.score or 0) > 2 * (s_flat.score or 0),
+          f"up={s_up.status} {s_up.score:.0f} / flat={s_flat.score:.0f}")
+    check("F35 트리거 없으면 강한 감점", (s_flat.score or 0) < 20,
+          f"{s_flat.score}")
+    check("F35 감점 사유 명시", "증거 없" in (s_flat.reason or "") or "개시" in (s_flat.reason or ""),
+          s_flat.reason[:60])
+
+    shrink = fin(list(zip(ks, [0.85, 0.84, 0.86, 0.85, 0.84, 0.85])))
+    shrink["rev_yoy_series"] = [((2024, q), -6.0) for q in range(1, 5)]
+    s_dead = a4_replacement(shrink)
+    check("F35 고객 산업 축소는 기각 유지", s_dead.status == "rejected", s_dead.status)
 
 
 # ---------------------------------------------------------------- F32
@@ -913,7 +963,7 @@ def main() -> int:
                f27_benefit_order, f28_three_year_subset_index,
                f29_census_time_param, f30_penetration_units, f31_revenue_acceleration,
                f32_asof_no_future_leak, f33_forward_return_alive_only,
-               f34_asof_no_snapshot_fallback]:
+               f34_asof_no_snapshot_fallback, f35_replacement_needs_trigger]:
         try:
             fn()
         except Exception as e:
