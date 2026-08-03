@@ -750,6 +750,31 @@ def f29_census_time_param():
     check("F29 공백 인코딩", " " not in u, u)
 
 
+# ---------------------------------------------------------------- F31
+def f31_revenue_acceleration():
+    """같은 성장률이면 '가속 중'인 쪽이 위다.
+
+    수혜 판별이 매출 YoY 수준만 보면 '3년째 똑같이 +20%'와 '지난 분기 +5% →
+    이번 분기 +20%'를 구별 못 한다. 촉매는 가속에서 먼저 보인다.
+    """
+    from screener.signals import benefit_order
+
+    rows = [
+        {"ticker": "FLAT", "rev_yoy": 20.0, "rev_accel": 0.0, "opm_delta": 1.0},
+        {"ticker": "TURN", "rev_yoy": 20.0, "rev_accel": 15.0, "opm_delta": 1.0},
+        {"ticker": "DECEL", "rev_yoy": 20.0, "rev_accel": -10.0, "opm_delta": 1.0},
+    ]
+    out = benefit_order(rows)
+    order = [r["ticker"] for r in out]
+    check("F31 가속 중이 1위", order[0] == "TURN", str(order))
+    check("F31 감속 중이 꼴찌", order[-1] == "DECEL", str(order))
+    # 가속 데이터가 아예 없으면 남은 지표로 가중치 재배분 — None 점수가 아니다
+    rows2 = [{"ticker": "A", "rev_yoy": 10.0, "opm_delta": 2.0}]
+    out2 = benefit_order(rows2)
+    check("F31 가속 없어도 점수 산출", out2[0]["benefit"] is not None,
+          str(out2[0].get("benefit")))
+
+
 # ---------------------------------------------------------------- F30
 def f30_penetration_units():
     """수입침투율은 수입(달러)과 M3 출하(백만 달러)의 단위를 맞춰 계산한다.
@@ -784,7 +809,7 @@ def main() -> int:
                f23_rebound_not_unpriced, f24_rebound_detection,
                f25_partial_thesis_disclosure, f26_supply_long_run,
                f27_benefit_order, f28_three_year_subset_index,
-               f29_census_time_param, f30_penetration_units]:
+               f29_census_time_param, f30_penetration_units, f31_revenue_acceleration]:
         try:
             fn()
         except Exception as e:

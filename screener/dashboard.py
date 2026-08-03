@@ -408,7 +408,9 @@ def _stock_table(r: ThemeResult) -> str:
         rows.append(
             f'<tr class="{cls}"><th scope="row">{_e(s["ticker"])}'
             f'<span class="coname">{_e(NAMES.get(s["ticker"].upper(), ""))}</span></th>'
+            f'<td class="num">{num("benefit", "{:.0f}", "")}</td>'
             f'<td class="num">{num("rev_yoy", "{:+.1f}", "%")}</td>'
+            f'<td class="num">{num("rev_accel", "{:+.1f}", "%p")}</td>'
             f'<td class="num">{num("opm_delta", "{:+.1f}", "%p")}</td>'
             f'<td class="num">{num("op_margin", "{:.1f}", "%")}</td>'
             f'<td class="num">{num("rel_12m", "{:+.1f}", "%p")}</td>'
@@ -419,14 +421,18 @@ def _stock_table(r: ThemeResult) -> str:
         '<details class="stocks"><summary>종목별 내역 '
         f'({len(r.stocks)}개 · 수혜 강한 순)</summary>'
         '<table class="stk"><thead><tr><th>티커 · 회사명</th>'
-        '<th class="num">매출 YoY</th><th class="num">이익률 개선</th>'
+        '<th class="num">수혜</th>'
+        '<th class="num">매출 YoY</th><th class="num">매출 가속</th>'
+        '<th class="num">이익률 개선</th>'
         '<th class="num">영업이익률</th><th class="num">상대수익 12M</th>'
         '<th class="num">고점대비</th></tr></thead>'
         f'<tbody>{"".join(rows)}</tbody></table>'
-        '<p class="stknote">테마의 촉매가 <strong>실적으로 확인되는 종목'
-        '(매출 성장 + 이익률 개선)</strong>을 위로 올렸다. 빨간 행은 이미 많이 '
-        '오른 종목이니 반영 정도를 함께 볼 것. 재무 미확보 종목(—)은 근거가 '
-        '없어 맨 아래. 종목을 고르는 모델이 아니다.</p></details>')
+        '<p class="stknote">테마의 촉매가 <strong>실적으로 확인되는 종목</strong>을 '
+        '위로 올렸다. 수혜 = 매출 성장 45% + 매출 가속 15% + 이익률 개선 40% '
+        '(테마 내 백분위). ‘매출 가속’은 성장률의 변화 — 이미 성장 중과 지금 막 '
+        '꺾여 올라오는 중을 가른다. 빨간 행은 이미 많이 오른 종목이니 반영 정도를 '
+        '함께 볼 것. 재무 미확보(—)는 근거가 없어 맨 아래. 종목을 고르는 모델이 '
+        '아니다.</p></details>')
 
 
 def _priority_list(ranked: list[ThemeResult]) -> str:

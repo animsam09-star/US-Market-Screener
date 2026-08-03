@@ -568,6 +568,16 @@ def per_stock(tickers: list[str], tmap: dict, prices: dict, bench: list) -> list
             prev = (k[0] - 1, k[1])
             if prev in rev_ttm and rev_ttm[prev]:
                 row["rev_yoy"] = 100.0 * (rev_ttm[k] / rev_ttm[prev] - 1.0)
+            # 가속 = 이번 YoY − 직전 분기 시점 YoY. '이미 성장 중'과
+            # '지금 막 꺾여 올라오는 중'을 가른다 — 촉매는 가속에서 먼저 보인다.
+            ks = sorted(rev_ttm)
+            i = ks.index(k)
+            if "rev_yoy" in row and i >= 1:
+                k1 = ks[i - 1]
+                p1 = (k1[0] - 1, k1[1])
+                if p1 in rev_ttm and rev_ttm[p1]:
+                    row["rev_accel"] = (row["rev_yoy"]
+                                        - 100.0 * (rev_ttm[k1] / rev_ttm[p1] - 1.0))
         eb = dict(ttm(con.get("ebit", {})))
         common = sorted(set(eb) & set(rev_ttm))
         if common:
@@ -584,13 +594,17 @@ def per_stock(tickers: list[str], tmap: dict, prices: dict, bench: list) -> list
     return benefit_order(out)
 
 
+# 수혜 강도 구성: 매출 성장(수요 전이) + 매출 가속(촉매가 '지금' 도착하는 증거)
+# + 이익률 개선(가격 전가·레버리지). 가중치는 백테스트 전까지 잠정값이다.
+BENEFIT_PARTS = [("rev_yoy", 0.45), ("rev_accel", 0.15), ("opm_delta", 0.40)]
+
+
 def benefit_order(rows: list[dict]) -> list[dict]:
     """수혜 강도 순 정렬 (각 행에 benefit 0~100 부여).
 
-    수혜 강도 = 촉매가 실제 손익에 들어오는 증거의 세기:
-    매출 성장(수요 전이) 60% + 영업이익률 개선(가격 전가·레버리지) 40%.
-    테마 내 백분위로 매겨 업종 간 절대 수준 차이에 휘둘리지 않는다.
-    재무가 없는 종목은 '판단 근거 없음'이므로 맨 아래로 보낸다.
+    수혜 강도 = 촉매가 실제 손익에 들어오는 증거의 세기. 테마 내 백분위로
+    매겨 업종 간 절대 수준 차이에 휘둘리지 않는다. 없는 지표는 가중치를
+    남은 지표로 재배분하고, 전부 없는 종목은 '판단 근거 없음'으로 맨 아래.
     """
     def pct(key):
         vals = sorted(r[key] for r in rows if r.get(key) is not None)
@@ -601,17 +615,15 @@ def benefit_order(rows: list[dict]) -> list[dict]:
             return 100.0 * sum(1 for x in vals if x <= v) / len(vals)
         return p
 
-    p_rev, p_opm = pct("rev_yoy"), pct("opm_delta")
+    pfn = {k: pct(k) for k, _ in BENEFIT_PARTS}
     for r in rows:
-        a, b = p_rev(r.get("rev_yoy")), p_opm(r.get("opm_delta"))
-        if a is None and b is None:
-            r["benefit"] = None
-        elif b is None:
-            r["benefit"] = a
-        elif a is None:
-            r["benefit"] = b
-        else:
-            r["benefit"] = 0.6 * a + 0.4 * b
+        acc = tot = 0.0
+        for k, w in BENEFIT_PARTS:
+            p = pfn[k](r.get(k))
+            if p is not None:
+                acc += w * p
+                tot += w
+        r["benefit"] = (acc / tot) if tot else None
 
     def key(r):
         b = r.get("benefit")
