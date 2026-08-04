@@ -3,13 +3,16 @@ from __future__ import annotations
 
 import html
 import json
+import re
 from datetime import datetime
 from pathlib import Path
 
 from .signals import ThemeResult
 from .sources import ticker_names
 
-NAMES = ticker_names()
+# SEC 등록명의 법인 접미("/DE/", "/MD/" 등 등록 주州 표기)는 화면에선 소음이다
+NAMES = {k: re.sub(r"\s*/[A-Z]{2}/?\s*$", "", v).strip()
+         for k, v in ticker_names().items()}
 
 # dataviz 레퍼런스 팔레트의 검증된 상위 3슬롯을 값 변경 없이 사용.
 # 리드타임 버킷이 정확히 3개라 all-pairs 게이트를 통과하는 범위 안에 있다.
@@ -473,6 +476,71 @@ def _stock_table(r: ThemeResult) -> str:
         '같은 테마 안의 우선순위다.</p></details>')
 
 
+def _top_picks(ranked: list[ThemeResult]) -> str:
+    """맨 위 '지금 가장 추천하는 3종목'.
+
+    선정 = 도구의 두 층위를 그대로 곱한 것: 촉매가 확인된 테마(판정 순서)
+    안에서, 수혜가 확인되고(benefit≥50) 여력이 남은 종목을
+    √(테마 종합 × 종목 종합)으로 뽑는다. 테마당 1종목(한 테마 몰빵 방지).
+    """
+    cands = []
+    for r in ranked:
+        tag, _cls, _txt = _verdict(r)
+        for s in r.stocks:
+            if s.get("total") is None or (s.get("benefit") or 0) < 50:
+                continue
+            pick = (max(rank_score(r), 1.0) * s["total"]) ** 0.5
+            cands.append((VERDICT_ORDER.get(tag, 9), -pick, r, s, tag))
+            break                                  # 테마 내 1위만 후보
+    cands.sort(key=lambda x: (x[0], x[1]))
+    top = cands[:3]
+    if not top:
+        return ""
+
+    items = []
+    for i, (_, negp, r, s, tag) in enumerate(top, 1):
+        t = s["ticker"]
+        name = NAMES.get(t.upper(), "")
+        tops = r.top_axes
+        why_theme = AXIS_PLAIN.get(tops[0].key, tops[0].label) if tops else ""
+
+        def v(k, fmt, suf=""):
+            x = s.get(k)
+            return f"{fmt.format(x)}{suf}" if x is not None else "—"
+
+        up = s.get("upside") or 0
+        a12 = s.get("abs_12m")
+        # 여력은 '테마 내 상대값'이다 — +116% 오른 종목에 "덜 올랐다"고 쓰면
+        # 거짓말이 된다(DINO 실측). 절대 상승률에 따라 문장을 가른다.
+        if up >= 50 and (a12 is None or a12 < 30):
+            px_part = (f"주가는 12개월 {v('abs_12m', '{:+.0f}', '%')}로 "
+                       "아직 덜 올라 여력이 남았습니다")
+        elif up >= 50:
+            px_part = (f"주가가 12개월 {v('abs_12m', '{:+.0f}', '%')} 올랐지만 "
+                       "테마 안에서는 실적 대비 상대적으로 여력이 남은 편입니다")
+        else:
+            px_part = (f"주가는 12개월 {v('abs_12m', '{:+.0f}', '%')} — 반영이 "
+                       "진행돼 실적 개선 속도가 관건입니다")
+        reason = (f"<strong>{_e(r.name)}</strong>(판정 {_e(tag)}) — {_e(why_theme)} "
+                  f"이 테마 수혜 1위: 매출 {v('rev_yoy', '{:+.1f}', '%')}"
+                  + (f", 이익률 개선 {v('opm_delta', '{:+.1f}', '%p')}"
+                     if s.get("opm_delta") is not None else "")
+                  + f". {px_part} (수혜 {v('benefit', '{:.0f}')}"
+                  f"·여력 {v('upside', '{:.0f}')}).")
+        items.append(
+            f'<li class="pick"><span class="pick-n">{i}</span>'
+            f'<div class="pick-b"><span class="pick-t">{_e(t)}</span>'
+            f'<span class="pick-co">{_e(name)}</span>'
+            f'<p class="pick-why">{reason}</p></div></li>')
+
+    return ('<div class="picks"><h2 class="picks-h">지금 가장 추천하는 3종목</h2>'
+            '<ol class="picks-l">' + "".join(items) + '</ol>'
+            '<p class="picks-note">촉매가 확인된 테마 안에서 수혜(실적)와 '
+            '상승여력을 함께 요구한 자동 선별이다 — 데이터 기준 우선순위이지 '
+            '리서치 판단을 대체하지 않는다. 근거는 아래 테마 카드에서 축별로 '
+            '확인할 것.</p></div>')
+
+
 def _priority_list(ranked: list[ThemeResult]) -> str:
     """추천 순서 — 스크롤 안 하고 한눈에.
 
@@ -622,6 +690,19 @@ border:1px solid currentColor;vertical-align:1px;letter-spacing:.02em}
 .st-warn{color:var(--text-secondary)}
 .st-rej{color:var(--critical)}
 .st-na{color:var(--muted)}
+.picks{margin:18px 0 0;padding:16px 20px;border-radius:14px;
+background:var(--surface-1);border:1px solid var(--border)}
+.picks-h{margin:0 0 10px;font-size:15px}
+.picks-l{list-style:none;margin:0;padding:0}
+.pick{display:flex;gap:12px;padding:9px 0;border-top:1px solid var(--grid)}
+.pick:first-child{border-top:0}
+.pick-n{flex:0 0 22px;height:22px;border-radius:50%;background:var(--series-1);
+color:#fff;font-size:12px;font-weight:700;display:flex;align-items:center;
+justify-content:center;margin-top:2px}
+.pick-t{font-weight:700;font-size:14px;margin-right:8px}
+.pick-co{color:var(--muted);font-size:12px}
+.pick-why{margin:3px 0 0;font-size:12.5px;color:var(--text-secondary);line-height:1.55}
+.picks-note{margin:10px 0 0;font-size:11.5px;color:var(--muted)}
 .ic-ok{color:var(--good);border:1px solid var(--good);background:transparent}
 .ic-bad{color:var(--critical);border:1px solid var(--critical);background:transparent}
 .ic-na{color:var(--muted);border:1px solid var(--border);background:transparent}
@@ -770,6 +851,7 @@ r.dataset.theme=r.dataset.theme==='dark'?'light':'dark'">라이트/다크</butto
 <a href="backtest.html">백테스트 검증 결과</a></p>
 
 {warn}
+{_top_picks(ranked)}
 {_priority_list(ranked)}
 
 <p class="rankrule">정렬 기준: <code>√(촉매 × 미반영) × 신뢰도 × 게이트</code>
