@@ -593,7 +593,11 @@ def per_stock(tickers: list[str], tmap: dict, prices: dict, bench: list) -> list
                 facts = sec_company_facts(cik)
             except FetchError:
                 facts = None
-        con = ({c: xbrl_quarterly(facts, c) for c in CONCEPTS} if facts is not None
+        # 종목별 지표는 전부 비율(YoY·마진)이라 통화가 약분된다 — 캐나다 IFRS
+        # 신고자(CCJ·NTR 등)의 CAD 를 여기서만 허용한다. 그룹 '합산'(aggregate)
+        # 은 통화가 섞이면 안 되므로 USD 만 쓴다.
+        con = ({c: xbrl_quarterly(facts, c, units=("USD", "CAD", "shares"))
+                for c in CONCEPTS} if facts is not None
                else {c: snapshot_quarterly(t, c) for c in CONCEPTS})
 
         rev_ttm = dict(ttm(con.get("revenue", {})))
@@ -623,6 +627,12 @@ def per_stock(tickers: list[str], tmap: dict, prices: dict, bench: list) -> list
                 if prev in eb and prev in rev_ttm and rev_ttm[prev]:
                     row["opm_delta"] = (row["op_margin"]
                                         - 100.0 * eb[prev] / rev_ttm[prev])
+
+        # 분기가 아예 없는 신고자(캐나다 40-F 등)는 연간으로 폴백 —
+        # 1년 늦은 진실이 공백보다 낫다. 표에는 '연간재무 기준'을 표시한다.
+        if "rev_yoy" not in row and facts is not None:
+            _annual_fallback(row, facts)
+        _drop_meaningless_margin(row)
         out.append(row)
 
     return benefit_order(out)
@@ -631,6 +641,51 @@ def per_stock(tickers: list[str], tmap: dict, prices: dict, bench: list) -> list
 # 수혜 강도 구성: 매출 성장(수요 전이) + 매출 가속(촉매가 '지금' 도착하는 증거)
 # + 이익률 개선(가격 전가·레버리지). 가중치는 백테스트 전까지 잠정값이다.
 BENEFIT_PARTS = [("rev_yoy", 0.45), ("rev_accel", 0.15), ("opm_delta", 0.40)]
+
+
+def _drop_meaningless_margin(row: dict) -> None:
+    """매출이 극소인 기업(탐사·개발 단계)의 마진은 수치가 아니라 소음이다.
+
+    실측: DNN 이익률 개선 +1,101%p, UEC −541%p — 매출 몇 백만 달러에 이익
+    변동이 얹히면 마진이 이렇게 나온다. 표에 그대로 내면 표 전체의 신뢰가
+    무너진다. |영업이익률| 200% 초과면 마진 계열을 지운다(매출 YoY 는 유지).
+    """
+    if abs(row.get("op_margin") or 0) > 200:
+        row.pop("op_margin", None)
+        row.pop("opm_delta", None)
+
+
+def _annual_fallback(row: dict, facts: dict) -> None:
+    """연간 재무로 YoY·마진을 채운다 (분기 XBRL 이 없는 신고자 전용).
+
+    낡은 연간(마지막 연도가 재작년 이전)은 쓰지 않는다 — 오래된 성장률을
+    현재 신호처럼 보이게 하는 것이 공백보다 나쁘다.
+    """
+    from datetime import date as _d
+
+    from .sources import xbrl_annual
+    u = ("USD", "CAD", "shares")
+    rev = xbrl_annual(facts, "revenue", units=u)
+    if not rev:
+        return
+    ys = sorted(rev)
+    if ys[-1] < _d.today().year - 1:
+        return                                  # 낡음 — 침묵이 낫다
+    if len(ys) >= 2 and rev[ys[-2]]:
+        row["rev_yoy"] = 100.0 * (rev[ys[-1]] / rev[ys[-2]] - 1.0)
+        row["annual_basis"] = True
+        if len(ys) >= 3 and rev[ys[-3]]:
+            row["rev_accel"] = (row["rev_yoy"]
+                                - 100.0 * (rev[ys[-2]] / rev[ys[-3]] - 1.0))
+    eb = xbrl_annual(facts, "ebit", units=u)
+    common = sorted(set(eb) & set(rev))
+    if common and rev[common[-1]]:
+        y = common[-1]
+        row["op_margin"] = 100.0 * eb[y] / rev[y]
+        row["annual_basis"] = True
+        if len(common) >= 2 and rev[common[-2]]:
+            row["opm_delta"] = (row["op_margin"]
+                                - 100.0 * eb[common[-2]] / rev[common[-2]])
 
 
 def benefit_order(rows: list[dict]) -> list[dict]:

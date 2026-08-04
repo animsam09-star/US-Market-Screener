@@ -765,6 +765,49 @@ def f29_census_time_param():
     check("F29 공백 인코딩", " " not in u, u)
 
 
+# ---------------------------------------------------------------- F37
+def f37_annual_fallback():
+    """분기 XBRL 이 없는 신고자(캐나다 40-F·이스라엘 20-F)는 연간으로 폴백.
+
+    전수 점검 실측: CCJ·DNN·NXE·NTR 은 SEC 에 연간만 있다(360일 기간 × 18건).
+    분기 TTM 이 불가능하면 연간 YoY 라도 써야 종목표가 '재무 미확보'로 비지
+    않는다. 단 낡은 연간(재작년 이전)은 침묵 — 옛 성장률을 현재처럼 보이게
+    하는 것이 공백보다 나쁘다.
+    """
+    from screener.signals import _annual_fallback
+    from screener.sources import xbrl_annual
+
+    def facts_annual(years_vals, ccy="CAD"):
+        rows = [{"start": f"{y}-01-01", "end": f"{y}-12-31", "val": v,
+                 "filed": f"{y + 1}-03-01"} for y, v in years_vals]
+        return {"facts": {"ifrs-full": {"Revenue": {"units": {ccy: rows}}}}}
+
+    f = facts_annual([(2023, 1000), (2024, 1100), (2025, 1320)])
+    a = xbrl_annual(f, "revenue", units=("USD", "CAD", "shares"))
+    check("F37 연간 추출", a == {2023: 1000.0, 2024: 1100.0, 2025: 1320.0}, str(a))
+
+    row = {}
+    _annual_fallback(row, f)
+    check("F37 연간 YoY 계산", abs(row.get("rev_yoy", 0) - 20.0) < 0.1,
+          str(row.get("rev_yoy")))
+    check("F37 연간 기준 표시", row.get("annual_basis") is True)
+    check("F37 가속도 계산", abs(row.get("rev_accel", 0) - 10.0) < 0.1,
+          str(row.get("rev_accel")))
+
+    stale = facts_annual([(2020, 900), (2021, 950)])
+    row2 = {}
+    _annual_fallback(row2, stale)
+    check("F37 낡은 연간은 침묵", "rev_yoy" not in row2, str(row2))
+
+    # 매출 극소 기업의 마진(DNN +1,101%p 실측)은 소음 — 지워야 한다
+    from screener.signals import _drop_meaningless_margin
+    row3 = {"rev_yoy": 22.0, "op_margin": 1101.5, "opm_delta": 900.0}
+    _drop_meaningless_margin(row3)
+    check("F37 비정상 마진 제거", "op_margin" not in row3 and "opm_delta" not in row3,
+          str(row3))
+    check("F37 매출 YoY 는 유지", row3.get("rev_yoy") == 22.0)
+
+
 # ---------------------------------------------------------------- F36
 def f36_xbrl_tag_and_fiscal_calendar():
     """낡은 태그가 진짜 태그를 가리고, 4-4-5 달력이 분기를 어긋나게 한다.
@@ -835,6 +878,37 @@ def f36_xbrl_tag_and_fiscal_calendar():
     check("F36 단독 연간값 복원", abs(q4[(2025, 4)] - 540) < 1,
           f"Q4={q4.get((2025, 4))}")
     check("F36 정상 분기 무손상", abs(q4[(2025, 3)] - 530) < 1)
+
+    # ⑤ 고성장 기업 오수리 금지: 매출이 수년에 걸쳐 5배가 되면 최근 분기가
+    # '전체 이력 중앙값의 2.5배'를 넘는 게 정상이다(LEN·DHI 오탐 실측).
+    # 이상값 판정은 전체가 아니라 이웃 분기 기준이어야 한다.
+    import datetime as _dt
+    grow = []
+    v = 100.0
+    d0 = _dt.date(2018, 1, 1)
+    for i in range(28):                        # 7년, 분기 +6% 복리 ≈ 5배
+        s = d0 + _dt.timedelta(days=91 * i)
+        e = s + _dt.timedelta(days=90)
+        grow.append((s.isoformat(), e.isoformat(), v))
+        v *= 1.06
+    facts5 = flow({"Revenues": entries(grow)})
+    q5 = xbrl_quarterly(facts5, "revenue")
+    ks5 = sorted(q5)
+    check("F36 고성장 분기 무손상(수리 오발동 금지)", len(q5) >= 26,
+          f"{len(q5)}개")
+    check("F36 최근 분기 보존", q5[ks5[-1]] > q5[ks5[0]] * 3,
+          f"{q5[ks5[0]]:.0f}→{q5[ks5[-1]]:.0f}")
+
+    # ⑥ IFRS(캐나다 등) 신고자: ifrs-full 'Revenue' + CAD 단위 —
+    # 종목별 비율 계산에서는 통화가 약분되므로 CAD 를 허용해야 한다(CCJ 실측)
+    facts6 = {"facts": {"ifrs-full": {"Revenue": {"units": {"CAD": [
+        {"start": "2024-01-01", "end": "2024-03-31", "val": 700, "filed": "2024-05-01"},
+        {"start": "2024-01-01", "end": "2024-06-30", "val": 1450, "filed": "2024-08-01"},
+    ]}}}}}
+    q6_usd = xbrl_quarterly(facts6, "revenue")
+    q6_cad = xbrl_quarterly(facts6, "revenue", units=("USD", "CAD", "shares"))
+    check("F36 기본은 USD만(그룹 합산 보호)", q6_usd == {}, str(q6_usd))
+    check("F36 units 확장 시 CAD 인식", q6_cad.get((2024, 2)) == 750, str(q6_cad))
 
 
 # ---------------------------------------------------------------- F35
@@ -1036,7 +1110,7 @@ def main() -> int:
                f29_census_time_param, f30_penetration_units, f31_revenue_acceleration,
                f32_asof_no_future_leak, f33_forward_return_alive_only,
                f34_asof_no_snapshot_fallback, f35_replacement_needs_trigger,
-               f36_xbrl_tag_and_fiscal_calendar]:
+               f36_xbrl_tag_and_fiscal_calendar, f37_annual_fallback]:
         try:
             fn()
         except Exception as e:

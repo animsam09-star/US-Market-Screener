@@ -99,14 +99,28 @@ _SEC_TTL = 24 * 3
 
 # 태그는 회사마다 다르게 쓴다. 우선순위대로 시도한다.
 TAGS = {
+    # 태그 순서는 참고일 뿐 — quarterly_from_periods 가 '가장 최신·긴' 태그를
+    # 고른다(전수 점검: LMT 낡은 태그 가림, LEU ContractsRevenue,
+    # MTH HomeBuildingRevenue, IFRS 신고자 Revenue 등 실측 기반 확장).
     "revenue": [
         "RevenueFromContractWithCustomerExcludingAssessedTax",
         "RevenueFromContractWithCustomerIncludingAssessedTax",
         "Revenues",
         "SalesRevenueNet",
         "SalesRevenueGoodsNet",
+        "ContractsRevenue",                    # LEU (정부 계약형)
+        "HomeBuildingRevenue",                 # MTH (주택건설 분리 보고)
+        "RevenueFromContractsWithCustomers",   # IFRS (NTR)
+        "Revenue",                             # IFRS (CCJ·DNN·NXE)
     ],
-    "ebit": ["OperatingIncomeLoss"],
+    # OperatingIncomeLoss 미보고 기업(PSX·NUE 등 7종 실측)은 세전이익으로
+    # 폴백한다 — 마진 '수준'은 영업이익률과 다르지만 개선폭(Δ)은 유효하다.
+    "ebit": [
+        "OperatingIncomeLoss",
+        "ProfitLossFromOperatingActivities",   # IFRS
+        "IncomeLossFromContinuingOperationsBeforeIncomeTaxesExtraordinaryItemsNoncontrollingInterest",
+        "IncomeLossFromContinuingOperationsBeforeIncomeTaxesMinorityInterestAndIncomeLossFromEquityMethodInvestments",
+    ],
     "capex": [
         "PaymentsToAcquirePropertyPlantAndEquipment",
         "PaymentsToAcquireProductiveAssets",
@@ -242,12 +256,17 @@ def _quarter_of(d: str) -> tuple[int, int] | None:
     return dt.year, (dt.month - 1) // 3 + 1
 
 
-def xbrl_periods(facts: dict, concept: str) -> list[list[tuple]]:
+def xbrl_periods(facts: dict, concept: str,
+                 units: tuple = ("USD", "shares")) -> list[list[tuple]]:
     """태그별 원시 기간 목록 [(start, end, filed, val), …] — 태그 폴백 순서 유지.
 
     백테스트가 스냅샷마다 수 MB 짜리 facts JSON 을 재파싱하면 몇 시간이 된다.
     파싱은 여기서 티커당 한 번만 하고, 시점 컷·분기 복원은
     quarterly_from_periods 가 이 경량 구조 위에서 반복한다.
+
+    units: 기본은 USD 만 — 그룹 '합산'에 통화가 섞이면 안 된다. 종목별 비율
+    (YoY·마진)은 통화가 약분되므로 호출부가 CAD 등을 명시적으로 허용할 수
+    있다(캐나다 IFRS 신고자 CCJ·DNN·NXE 실측).
     """
     is_stock = concept in STOCK_CONCEPTS
     out: list[list[tuple]] = []
@@ -256,7 +275,7 @@ def xbrl_periods(facts: dict, concept: str) -> list[list[tuple]]:
         for ns in ("us-gaap", "dei", "ifrs-full"):
             for unit, entries in (facts.get("facts", {}).get(ns, {})
                                   .get(tag, {}).get("units", {}).items()):
-                if unit not in ("USD", "shares"):
+                if unit not in units:
                     continue
                 for e in entries:
                     end = e.get("end")
@@ -338,6 +357,41 @@ def quarterly_from_periods(tag_lists: list[list[tuple]], concept: str,
     return best
 
 
+def xbrl_annual(facts: dict, concept: str,
+                units: tuple = ("USD", "shares")) -> dict[int, float]:
+    """연도별 시계열 {회계연도: 값}. 분기가 아예 없는 신고자용 폴백.
+
+    캐나다 40-F(CCJ·DNN·NXE·NTR)·이스라엘 20-F(CAMT) 신고자는 SEC XBRL 에
+    연간(또는 반기)만 있다. 분기 TTM 이 불가능하면 연간 YoY·마진이라도 쓴다 —
+    없는 것보다 1년 늦은 진실이 낫다. 태그는 분기와 같은 '최신·최다' 규칙.
+    """
+    best: dict[int, float] = {}
+    for rows in xbrl_periods(facts, concept, units):
+        periods: dict[tuple[str, str], tuple[str, float]] = {}
+        for start, end, filed, val in rows:
+            if not start:
+                continue
+            try:
+                days = (datetime.strptime(end, "%Y-%m-%d")
+                        - datetime.strptime(start, "%Y-%m-%d")).days
+            except ValueError:
+                continue
+            if not 330 <= days <= 380:
+                continue
+            key = (start, end)
+            prev = periods.get(key)
+            if prev is None or filed >= prev[0]:
+                periods[key] = (filed, val)
+        out: dict[int, float] = {}
+        for (_, end), (_, v) in sorted(periods.items(), key=lambda x: x[0][1]):
+            k = _quarter_of(end)
+            if k:
+                out[k[0]] = v
+        if out and (not best or (max(out), len(out)) > (max(best), len(best))):
+            best = out
+    return best
+
+
 def _repair_annual_in_quarter(q: dict) -> dict:
     """연간 누적값이 분기 하나에 통째로 태깅된 공시를 복원한다.
 
@@ -345,22 +399,31 @@ def _repair_annual_in_quarter(q: dict) -> dict:
     분기 시계열에 그대로 박혔고 TTM·YoY(+83%)가 전부 틀어졌다. 경쟁 후보가
     없어 중앙값 판정도 못 잡는다. 앞 3개 분기가 있으면 '의심값 − 앞 3분기 합'
     으로 진짜 분기를 복원하고, 복원 불가면 버린다(오염보다 구멍이 낫다).
+
+    기준은 **이웃 ±4분기의 국소 중앙값**이다 — 전체 이력 중앙값을 쓰면
+    수년에 걸쳐 5배 성장한 기업(LEN·DHI 실측)의 최근 정상 분기를 이상값으로
+    오판해 멀쩡한 데이터를 '수리'해 버린다.
     """
     if len(q) < 6:
-        return q
-    vals = sorted(abs(v) for v in q.values())
-    med = vals[len(vals) // 2]
-    if med <= 0:
         return q
 
     def back(k, n):
         idx = k[0] * 4 + (k[1] - 1) - n
         return idx // 4, idx % 4 + 1
 
+    ks = sorted(q)
+
+    def local_med(k):
+        idx = k[0] * 4 + k[1] - 1
+        nb = [abs(q[o]) for o in ks
+              if o != k and abs(o[0] * 4 + o[1] - 1 - idx) <= 4]
+        return statistics.median(nb) if len(nb) >= 3 else None
+
     out = dict(q)
-    for k in sorted(q):
+    for k in ks:
         v = q[k]
-        if abs(v) <= 2.5 * med:
+        med = local_med(k)
+        if med is None or med <= 0 or abs(v) <= 2.5 * med:
             continue
         prevs = [out.get(back(k, i)) for i in (1, 2, 3)]
         if all(p is not None and abs(p) <= 2.5 * med for p in prevs):
@@ -394,7 +457,8 @@ def _resolve_quarters(cand: dict) -> dict:
 
 
 def xbrl_quarterly(facts: dict, concept: str,
-                   asof: str | None = None) -> dict[tuple[int, int], float]:
+                   asof: str | None = None,
+                   units: tuple = ("USD", "shares")) -> dict[tuple[int, int], float]:
     """companyfacts 에서 분기 시계열을 뽑는다.
 
     SEC 의 'frame' 필드만 쓰면 안 된다 — SEC 는 프레임을 일부 사실에만 붙인다
@@ -410,7 +474,8 @@ def xbrl_quarterly(facts: dict, concept: str,
     백테스트의 미래 정보 누출 방지 컷. filed 가 없는 항목은 언제 알 수 있었는지
     모르므로 보수적으로 버린다.
     """
-    return quarterly_from_periods(xbrl_periods(facts, concept), concept, asof)
+    return quarterly_from_periods(xbrl_periods(facts, concept, units),
+                                  concept, asof)
 
 
 def edgar_fts(phrase: str, *, forms: str = "10-K,10-Q",

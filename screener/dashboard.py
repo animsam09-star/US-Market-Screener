@@ -437,9 +437,12 @@ def _stock_table(r: ThemeResult) -> str:
 
         rel = s.get("rel_12m")
         cls = "cool" if rel is not None and rel < -5 else ("hot" if rel is not None and rel > 20 else "")
+        conm = NAMES.get(s["ticker"].upper(), "")
+        if s.get("annual_basis"):
+            conm = (conm + " · 연간재무 기준").strip(" ·")
         rows.append(
             f'<tr class="{cls}"><th scope="row">{_e(s["ticker"])}'
-            f'<span class="coname">{_e(NAMES.get(s["ticker"].upper(), ""))}</span></th>'
+            f'<span class="coname">{_e(conm)}</span></th>'
             f'<td class="num"><strong>{num("total", "{:.0f}", "")}</strong></td>'
             f'<td class="num">{num("benefit", "{:.0f}", "")}</td>'
             f'<td class="num">{num("upside", "{:.0f}", "")}</td>'
