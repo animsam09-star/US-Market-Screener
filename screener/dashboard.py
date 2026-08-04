@@ -476,6 +476,33 @@ def _stock_table(r: ThemeResult) -> str:
         '같은 테마 안의 우선순위다.</p></details>')
 
 
+def why_flat(theme_rel: float | None, s: dict) -> list[str]:
+    """'왜 아직 안 올랐나' — 데이터로 판별 가능한 원인만 말한다.
+
+    실적이 좋은데 주가가 눌린 데는 이유가 있다. 판별 가능한 것:
+    ①섹터 동반 눌림(테마 상대수익 음수) ②디레이팅(이익↑인데 멀티플↓ —
+    시장이 이익 지속성을 불신) ③실적 가속이 갓 시작(시장 미인지)
+    ④최근 반등 시동. 어느 것도 아니면 '데이터 밖 요인'으로 정직하게.
+    """
+    outs = []
+    if theme_rel is not None and theme_rel < -5:
+        outs.append(f"테마 전체가 시장 대비 {abs(theme_rel):.0f}%p 눌려 있어 "
+                    "종목보다 섹터 센티먼트 문제")
+    d = s.get("derate")
+    if d is not None and d < -15:
+        outs.append(f"이익이 느는 동안 멀티플이 {abs(d):.0f}% 압축 — "
+                    "시장이 이익의 지속성을 아직 불신")
+    if (s.get("rev_accel") or 0) > 3:
+        outs.append("실적 가속이 최근 분기에 막 시작돼 시장이 추세로 "
+                    "인정하기 전")
+    if (s.get("ret_3m") or 0) > 5 and (s.get("abs_12m") or 99) < 10:
+        outs.append(f"단, 최근 3개월 {s['ret_3m']:+.0f}% — 인식이 붙기 시작")
+    if not outs:
+        outs.append("데이터로는 설명되지 않음 — 종목 고유 요인"
+                    "(가이던스·일회성 이슈) 확인 필요")
+    return outs[:2]
+
+
 def _top_picks(ranked: list[ThemeResult]) -> str:
     """맨 위 '지금 가장 추천하는 3종목'.
 
@@ -521,12 +548,19 @@ def _top_picks(ranked: list[ThemeResult]) -> str:
         else:
             px_part = (f"주가는 12개월 {v('abs_12m', '{:+.0f}', '%')} — 반영이 "
                        "진행돼 실적 개선 속도가 관건입니다")
+        u3 = next((x for x in r.unpriced if x.key == "U3"), None)
+        trel = u3.raw if u3 and u3.raw is not None else None
+        flat = ""
+        if (s.get("upside") or 0) >= 50 and (s.get("abs_12m") is None
+                                             or s["abs_12m"] < 15):
+            flat = (' <span class="pick-flat">왜 아직 안 올랐나: '
+                    + _e(" / ".join(why_flat(trel, s))) + '.</span>')
         reason = (f"<strong>{_e(r.name)}</strong>(판정 {_e(tag)}) — {_e(why_theme)} "
                   f"이 테마 수혜 1위: 매출 {v('rev_yoy', '{:+.1f}', '%')}"
                   + (f", 이익률 개선 {v('opm_delta', '{:+.1f}', '%p')}"
                      if s.get("opm_delta") is not None else "")
                   + f". {px_part} (수혜 {v('benefit', '{:.0f}')}"
-                  f"·여력 {v('upside', '{:.0f}')}).")
+                  f"·여력 {v('upside', '{:.0f}')}).{flat}")
         items.append(
             f'<li class="pick"><span class="pick-n">{i}</span>'
             f'<div class="pick-b"><span class="pick-t">{_e(t)}</span>'
@@ -703,6 +737,7 @@ justify-content:center;margin-top:2px}
 .pick-co{color:var(--muted);font-size:12px}
 .pick-why{margin:3px 0 0;font-size:12.5px;color:var(--text-secondary);line-height:1.55}
 .picks-note{margin:10px 0 0;font-size:11.5px;color:var(--muted)}
+.pick-flat{display:block;margin-top:3px;color:var(--muted)}
 .ic-ok{color:var(--good);border:1px solid var(--good);background:transparent}
 .ic-bad{color:var(--critical);border:1px solid var(--critical);background:transparent}
 .ic-na{color:var(--muted);border:1px solid var(--border);background:transparent}

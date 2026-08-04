@@ -628,6 +628,24 @@ def per_stock(tickers: list[str], tmap: dict, prices: dict, bench: list) -> list
                     row["opm_delta"] = (row["op_margin"]
                                         - 100.0 * eb[prev] / rev_ttm[prev])
 
+        # P/EBIT 멀티플의 1년 변화 — '안 오른 이유'가 디레이팅(이익↑·배수↓)
+        # 인지 실적 부진인지 가른다. 주식수는 해당 분기 공시치만 쓴다.
+        sh = con.get("shares", {})
+        if eb and sh and len(px) > 260:
+            k = max(eb)
+            prev = (k[0] - 1, k[1])
+
+            def mult(kk, price):
+                n, v = sh.get(kk), eb.get(kk)
+                if n and v and v > 0 and price:
+                    return price * n / v
+                return None
+
+            m_now = mult(k, px[-1][1])
+            m_prev = mult(prev, px[-min(len(px), 252)][1])
+            if m_now and m_prev:
+                row["derate"] = 100.0 * (m_now / m_prev - 1.0)
+
         # 분기가 아예 없는 신고자(캐나다 40-F 등)는 연간으로 폴백 —
         # 1년 늦은 진실이 공백보다 낫다. 표에는 '연간재무 기준'을 표시한다.
         if "rev_yoy" not in row and facts is not None:

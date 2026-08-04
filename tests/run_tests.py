@@ -765,6 +765,30 @@ def f29_census_time_param():
     check("F29 공백 인코딩", " " not in u, u)
 
 
+# ---------------------------------------------------------------- F38
+def f38_why_flat_diagnosis():
+    """'왜 아직 안 올랐나'는 데이터로 판별 가능한 원인만 말해야 한다.
+
+    추천 종목에 '실적 좋은데 주가 flat'인 이유를 붙일 때, 근거 없는 서사를
+    지어내면 안 된다. 판별 불가면 '데이터 밖 요인'으로 정직하게.
+    """
+    from screener.dashboard import why_flat
+
+    # 섹터 동반 눌림 + 디레이팅
+    d = why_flat(-12.0, {"derate": -25.0, "abs_12m": 2.0})
+    check("F38 섹터 눌림 진단", any("섹터" in x for x in d), str(d))
+    check("F38 디레이팅 진단", any("멀티플" in x for x in d), str(d))
+    check("F38 최대 2개", len(d) <= 2, str(len(d)))
+
+    # 가속 갓 시작
+    d2 = why_flat(2.0, {"rev_accel": 8.0, "abs_12m": 3.0})
+    check("F38 가속 미인지 진단", any("추세로 인정" in x for x in d2), str(d2))
+
+    # 아무 근거 없음 → 지어내지 않는다
+    d3 = why_flat(1.0, {"abs_12m": 2.0})
+    check("F38 판별 불가는 정직하게", any("데이터로는 설명" in x for x in d3), str(d3))
+
+
 # ---------------------------------------------------------------- F37
 def f37_annual_fallback():
     """분기 XBRL 이 없는 신고자(캐나다 40-F·이스라엘 20-F)는 연간으로 폴백.
@@ -1110,7 +1134,8 @@ def main() -> int:
                f29_census_time_param, f30_penetration_units, f31_revenue_acceleration,
                f32_asof_no_future_leak, f33_forward_return_alive_only,
                f34_asof_no_snapshot_fallback, f35_replacement_needs_trigger,
-               f36_xbrl_tag_and_fiscal_calendar, f37_annual_fallback]:
+               f36_xbrl_tag_and_fiscal_calendar, f37_annual_fallback,
+               f38_why_flat_diagnosis]:
         try:
             fn()
         except Exception as e:
