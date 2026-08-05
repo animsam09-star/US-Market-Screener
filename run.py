@@ -56,7 +56,16 @@ export default {
         });
       }
     }
-    return env.ASSETS.fetch(request);
+    const res = await env.ASSETS.fetch(request);
+    // HTML 은 캐시 금지 — 매일 갱신되는데 브라우저가 어제 판을 계속 보여줘
+    // "안 바뀌었다"는 혼란이 반복됐다. 항상 재검증시킨다.
+    const ct = res.headers.get("Content-Type") || "";
+    if (ct.includes("text/html")) {
+      const h = new Headers(res.headers);
+      h.set("Cache-Control", "no-cache, must-revalidate");
+      return new Response(res.body, { status: res.status, headers: h });
+    }
+    return res;
   },
 };
 """
