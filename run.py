@@ -75,6 +75,31 @@ def _install_gate() -> None:
     (OUT / "_worker.js").write_text(_WORKER_JS, encoding="utf-8")
 
 
+def _append_history(results) -> None:
+    """오늘 점수·판정·추천을 reports/score_history.jsonl 에 한 줄 추가."""
+    import json
+    from datetime import date
+
+    from screener.dashboard import _verdict, priority, top_pick_rows
+
+    ranked = sorted(results, key=priority)
+    entry = {
+        "date": date.today().isoformat(),
+        "themes": {r.name: {"cat": round(r.catalyst_score or 0, 1),
+                            "unp": round(r.unpriced_score or 0, 1),
+                            "verdict": _verdict(r)[0]} for r in results},
+        "picks": [s["ticker"] for _, _, _r, s, _t in top_pick_rows(ranked)],
+    }
+    p = ROOT / "reports" / "score_history.jsonl"
+    p.parent.mkdir(exist_ok=True)
+    lines = []
+    if p.exists():
+        lines = [l for l in p.read_text(encoding="utf-8").splitlines()
+                 if l.strip() and json.loads(l).get("date") != entry["date"]]
+    lines.append(json.dumps(entry, ensure_ascii=False))
+    p.write_text("\n".join(lines) + "\n", encoding="utf-8")
+
+
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--config", default=str(ROOT / "themes.yaml"))
@@ -131,6 +156,11 @@ def main() -> int:
     if not results:
         print("결과 없음")
         return 1
+
+    # 점수 이력 축적 — '지난주와 달라진 것' 섹션의 재료. 같은 날짜는 덮어쓴다.
+    # (전체 실행일 때만 — --theme 부분 실행이 이력을 오염시키면 안 된다)
+    if not args.theme:
+        _append_history(results)
 
     html = build_html(results, benchmark=bench_tkr)
     out = OUT / "screener.html"

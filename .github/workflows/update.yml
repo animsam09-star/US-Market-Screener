@@ -215,7 +215,8 @@ jobs:
           } >> reports/run_status.md
           git config user.name  "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add reports/run_status.md
+          # score_history.jsonl(점수 이력 — '지난주와 달라진 것'의 재료)도 함께
+          git add reports/
           if git diff --staged --quiet; then exit 0; fi
           git commit -m "배포 결과 기록 (run ${GITHUB_RUN_NUMBER})"
           for i in 1 2 3; do

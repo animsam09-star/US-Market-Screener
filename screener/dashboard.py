@@ -503,8 +503,88 @@ def why_flat(theme_rel: float | None, s: dict) -> list[str]:
     return outs[:2]
 
 
-def _top_picks(ranked: list[ThemeResult]) -> str:
-    """맨 위 '지금 가장 추천하는 3종목'.
+def week_changes(hist: list[dict]) -> dict | None:
+    """최신 항목 vs 약 일주일 전 항목의 차이 — '지난주와 달라진 것'의 재료.
+
+    사용자 피드백 "별로 달라진 게 없네?" — 거시·재무는 월간·분기 주기라
+    화면이 느리게 변하는 게 정상이지만, 그 미세 변화가 안 보이는 건 결함이다.
+    매일 점수 이력(score_history.jsonl)을 쌓고 5~10일 전과 비교한다.
+    """
+    if len(hist) < 2:
+        return None
+    from datetime import date as _d
+    cur = hist[-1]
+    d1 = _d.fromisoformat(cur["date"])
+    cands = [h for h in hist[:-1]
+             if 5 <= (d1 - _d.fromisoformat(h["date"])).days <= 10]
+    if not cands:
+        return None
+    base = cands[-1]
+    out = {"days": (d1 - _d.fromisoformat(base["date"])).days,
+           "themes": [], "picks_from": base.get("picks", []),
+           "picks_to": cur.get("picks", [])}
+    for name, c in cur.get("themes", {}).items():
+        b = base.get("themes", {}).get(name)
+        if not b:
+            continue
+        dc = (c.get("cat") or 0) - (b.get("cat") or 0)
+        du = (c.get("unp") or 0) - (b.get("unp") or 0)
+        if abs(dc) >= 3 or abs(du) >= 3 or b.get("verdict") != c.get("verdict"):
+            out["themes"].append({"name": name, "dcat": dc, "dunp": du,
+                                  "v_from": b.get("verdict"),
+                                  "v_to": c.get("verdict")})
+    out["themes"].sort(key=lambda x: -(abs(x["dcat"]) + abs(x["dunp"])))
+    return out
+
+
+def _changes_html(hist: list[dict]) -> str:
+    ch = week_changes(hist)
+    if ch is None:
+        n = len(hist)
+        return ('<div class="wkch"><h2 class="wkch-h">지난주와 달라진 것</h2>'
+                f'<p class="wkch-note">이력 축적 중({n}일째) — 일주일치가 쌓이면 '
+                '점수·판정·추천의 변화가 여기 표시됩니다. 거시·재무 지표는 '
+                '월간·분기 주기라 화면이 느리게 변하는 게 정상입니다.</p></div>')
+    items = []
+    pf, pt = ch["picks_from"], ch["picks_to"]
+    if pf and pt:
+        if pf == pt:
+            items.append(f"추천 3종목 유지({' · '.join(pt)}) — 논지가 바뀌지 않았다는 뜻")
+        else:
+            items.append(f"추천 교체: {' · '.join(pf)} → <strong>{' · '.join(pt)}</strong>")
+    for t in ch["themes"][:6]:
+        parts = []
+        if t["v_from"] != t["v_to"]:
+            parts.append(f"판정 <strong>{_e(t['v_from'])} → {_e(t['v_to'])}</strong>")
+        if abs(t["dcat"]) >= 3:
+            parts.append(f"촉매 {t['dcat']:+.0f}")
+        if abs(t["dunp"]) >= 3:
+            parts.append(f"미반영 {t['dunp']:+.0f}")
+        items.append(f"{_e(t['name'])}: " + ", ".join(parts))
+    if len(items) <= 1:
+        items.append("테마 점수·판정 모두 ±3 이내 — 조용한 한 주")
+    lis = "".join(f"<li>{x}</li>" for x in items)
+    return ('<div class="wkch"><h2 class="wkch-h">지난주와 달라진 것 '
+            f'<span class="wkch-d">({ch["days"]}일 전 대비)</span></h2>'
+            f'<ul class="wkch-l">{lis}</ul></div>')
+
+
+def load_history() -> list[dict]:
+    p = Path(__file__).resolve().parent.parent / "reports" / "score_history.jsonl"
+    out = []
+    try:
+        for line in p.read_text(encoding="utf-8").splitlines():
+            line = line.strip()
+            if line:
+                out.append(json.loads(line))
+    except Exception:
+        return []
+    out.sort(key=lambda h: h.get("date", ""))
+    return out
+
+
+def top_pick_rows(ranked: list[ThemeResult]) -> list:
+    """추천 후보 상위 3 — (판정등급, -점수, 테마, 종목행, 판정어).
 
     선정 = 도구의 두 층위를 그대로 곱한 것: 촉매가 확인된 테마(판정 순서)
     안에서, 수혜가 확인되고(benefit≥50) 여력이 남은 종목을
@@ -520,7 +600,12 @@ def _top_picks(ranked: list[ThemeResult]) -> str:
             cands.append((VERDICT_ORDER.get(tag, 9), -pick, r, s, tag))
             break                                  # 테마 내 1위만 후보
     cands.sort(key=lambda x: (x[0], x[1]))
-    top = cands[:3]
+    return cands[:3]
+
+
+def _top_picks(ranked: list[ThemeResult]) -> str:
+    """맨 위 '지금 가장 추천하는 3종목' 카드 렌더."""
+    top = top_pick_rows(ranked)
     if not top:
         return ""
 
@@ -738,6 +823,14 @@ justify-content:center;margin-top:2px}
 .pick-why{margin:3px 0 0;font-size:12.5px;color:var(--text-secondary);line-height:1.55}
 .picks-note{margin:10px 0 0;font-size:11.5px;color:var(--muted)}
 .pick-flat{display:block;margin-top:3px;color:var(--muted)}
+.wkch{margin:14px 0 0;padding:14px 20px;border-radius:14px;
+background:var(--surface-1);border:1px solid var(--border)}
+.wkch-h{margin:0 0 8px;font-size:14px}
+.wkch-d{font-weight:400;font-size:12px;color:var(--muted)}
+.wkch-l{margin:0 0 0 18px;padding:0;font-size:12.5px;
+color:var(--text-secondary)}
+.wkch-l li{margin-bottom:4px}
+.wkch-note{margin:0;font-size:12px;color:var(--muted)}
 .ic-ok{color:var(--good);border:1px solid var(--good);background:transparent}
 .ic-bad{color:var(--critical);border:1px solid var(--critical);background:transparent}
 .ic-na{color:var(--muted);border:1px solid var(--border);background:transparent}
@@ -887,6 +980,7 @@ r.dataset.theme=r.dataset.theme==='dark'?'light':'dark'">라이트/다크</butto
 
 {warn}
 {_top_picks(ranked)}
+{_changes_html(load_history())}
 {_priority_list(ranked)}
 
 <p class="rankrule">정렬 기준: <code>√(촉매 × 미반영) × 신뢰도 × 게이트</code>

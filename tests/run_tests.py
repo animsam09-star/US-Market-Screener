@@ -765,6 +765,40 @@ def f29_census_time_param():
     check("F29 공백 인코딩", " " not in u, u)
 
 
+# ---------------------------------------------------------------- F39
+def f39_week_changes():
+    """'지난주와 달라진 것'은 5~10일 전 항목과 비교하고, 없으면 조용히 없다.
+
+    사용자 피드백 "별로 달라진 게 없네?" — 화면이 느리게 변하는 건 지표
+    주기상 정상이지만, 그 변화가 안 보이는 건 결함. 이력 비교로 해결.
+    """
+    from screener.dashboard import week_changes
+
+    h = [
+        {"date": "2026-08-05",
+         "themes": {"A": {"cat": 90, "unp": 50, "verdict": "볼 만함"},
+                    "B": {"cat": 50, "unp": 40, "verdict": "이미 반영"},
+                    "C": {"cat": 30, "unp": 30, "verdict": "지금은 아님"}},
+         "picks": ["X", "Y", "Z"]},
+        {"date": "2026-08-12",
+         "themes": {"A": {"cat": 96, "unp": 58, "verdict": "볼 만함"},
+                    "B": {"cat": 50, "unp": 41, "verdict": "볼 만함"},
+                    "C": {"cat": 31, "unp": 29, "verdict": "지금은 아님"}},
+         "picks": ["X", "Y", "Q"]},
+    ]
+    ch = week_changes(h)
+    check("F39 7일 간격 비교", ch is not None and ch["days"] == 7, str(ch and ch["days"]))
+    names = [t["name"] for t in ch["themes"]]
+    check("F39 점수 변화 감지(A +6/+8)", "A" in names, str(names))
+    check("F39 판정 변화 감지(B)", "B" in names, str(names))
+    check("F39 미세 변화(C ±1)는 제외", "C" not in names, str(names))
+    check("F39 추천 교체 감지", ch["picks_from"] != ch["picks_to"])
+
+    # 어제 항목뿐이면(간격 1일) 비교 대상 없음 — 지어내지 않는다
+    h2 = [dict(h[0], date="2026-08-11"), h[1]]
+    check("F39 간격 부족이면 None", week_changes(h2) is None)
+
+
 # ---------------------------------------------------------------- F38
 def f38_why_flat_diagnosis():
     """'왜 아직 안 올랐나'는 데이터로 판별 가능한 원인만 말해야 한다.
@@ -1135,7 +1169,7 @@ def main() -> int:
                f32_asof_no_future_leak, f33_forward_return_alive_only,
                f34_asof_no_snapshot_fallback, f35_replacement_needs_trigger,
                f36_xbrl_tag_and_fiscal_calendar, f37_annual_fallback,
-               f38_why_flat_diagnosis]:
+               f38_why_flat_diagnosis, f39_week_changes]:
         try:
             fn()
         except Exception as e:
