@@ -765,6 +765,46 @@ def f29_census_time_param():
     check("F29 공백 인코딩", " " not in u, u)
 
 
+# ---------------------------------------------------------------- F40
+def f40_earnings_link():
+    """실적발표 연동 — 컨센서스 없이도 발표일과 시장 반응은 잴 수 있다.
+
+    발표일 = SEC 8-K Item 2.02 접수일(실측: CF 2026-08-05 = 2Q26 발표).
+    반응 = 발표 전일 종가 → 발표 후 첫 종가, 시장(SPY) 차감. Yahoo 컨센서스는
+    크럼 게이트(401)로 불가 — EPS 서프라이즈는 Finnhub(키 있을 때만) 사용.
+    """
+    from datetime import date as _d
+    from datetime import timedelta as _td
+
+    from screener.sources import _earnings_dates_from, _parse_finnhub
+    from screener.signals import earnings_reaction
+
+    subs = {"filings": {"recent": {
+        "form": ["8-K", "10-Q", "8-K", "8-K"],
+        "filingDate": ["2026-08-05", "2026-08-07", "2026-08-05", "2026-05-06"],
+        "items": ["2.02,9.01", "", "2.02,9.01", "2.02,9.01"],
+    }}}
+    eds = _earnings_dates_from(subs, 5)
+    check("F40 8-K 2.02 발표일 추출", eds[0] == _d(2026, 8, 5), str(eds[:1]))
+    check("F40 중복 제출 제거", eds == [_d(2026, 8, 5), _d(2026, 5, 6)], str(eds))
+
+    base = _d(2026, 7, 1)
+    days = [base + _td(days=i) for i in range(40)]
+    px = [(d, 100.0) for d in days[:20]] + [(d, 108.0) for d in days[20:]]
+    bench = [(d, 50.0) for d in days[:20]] + [(d, 51.0) for d in days[20:]]
+    react = earnings_reaction(px, bench, days[20])   # 발표일에 +8%, 시장 +2%
+    check("F40 반응 = 종목 - 시장", react is not None and abs(react - 6.0) < 0.1,
+          str(react))
+    check("F40 이력 밖 날짜는 None",
+          earnings_reaction(px, bench, _d(2027, 1, 1)) is None)
+
+    fh = [{"actual": 2.19, "estimate": 1.85, "period": "2026-06-30",
+           "surprisePercent": 18.4}]
+    p = _parse_finnhub(fh)
+    check("F40 Finnhub 서프라이즈 파싱", p and abs(p["spct"] - 18.4) < 0.1, str(p))
+    check("F40 빈 응답은 None", _parse_finnhub([]) is None)
+
+
 # ---------------------------------------------------------------- F39
 def f39_week_changes():
     """'지난주와 달라진 것'은 5~10일 전 항목과 비교하고, 없으면 조용히 없다.
@@ -1169,7 +1209,7 @@ def main() -> int:
                f32_asof_no_future_leak, f33_forward_return_alive_only,
                f34_asof_no_snapshot_fallback, f35_replacement_needs_trigger,
                f36_xbrl_tag_and_fiscal_calendar, f37_annual_fallback,
-               f38_why_flat_diagnosis, f39_week_changes]:
+               f38_why_flat_diagnosis, f39_week_changes, f40_earnings_link]:
         try:
             fn()
         except Exception as e:

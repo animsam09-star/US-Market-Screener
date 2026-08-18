@@ -453,7 +453,11 @@ def _stock_table(r: ThemeResult) -> str:
             f'<td class="num">{num("opm_delta", "{:+.1f}", "%p")}</td>'
             f'<td class="num">{num("ret_1m", "{:+.1f}", "%")}</td>'
             f'<td class="num">{num("ret_3m", "{:+.1f}", "%")}</td>'
-            f'<td class="num">{num("abs_12m", "{:+.1f}", "%")}</td></tr>')
+            f'<td class="num">{num("abs_12m", "{:+.1f}", "%")}</td>'
+            f'<td class="num" title="{_e(s.get("earn_date") or "")}'
+            + (f' · EPS 서프라이즈 {s["eps_surprise"]:+.1f}%'
+               if s.get("eps_surprise") is not None else "")
+            + f'">{num("earn_react", "{:+.1f}", "%p")}</td></tr>')
     if not rows:
         return ""
     return (
@@ -464,7 +468,9 @@ def _stock_table(r: ThemeResult) -> str:
         '<th class="num">여력</th>'
         '<th class="num">매출YoY</th><th class="num">이익개선</th>'
         '<th class="num">1M</th><th class="num">3M</th>'
-        '<th class="num">12M</th></tr></thead>'
+        '<th class="num">12M</th>'
+        '<th class="num" title="최근 실적발표(8-K) 전후 시장 대비 반응">'
+        '실적반응</th></tr></thead>'
         f'<tbody>{"".join(rows)}</tbody></table>'
         '<p class="stknote"><strong>종합 = √(수혜 × 상승여력)</strong> — 실적으로 '
         '수혜가 확인되면서(매출 성장·가속·이익률 개선) 아직 가격에 덜 들어간 '
@@ -495,6 +501,10 @@ def why_flat(theme_rel: float | None, s: dict) -> list[str]:
     if (s.get("rev_accel") or 0) > 3:
         outs.append("실적 가속이 최근 분기에 막 시작돼 시장이 추세로 "
                     "인정하기 전")
+    er = s.get("earn_react")
+    if er is not None and er < -3:
+        outs.append(f"직전 실적 발표에 시장 반응이 차가웠음({er:+.1f}%p) — "
+                    "다음 분기 숫자로 증명해야 하는 구간")
     if (s.get("ret_3m") or 0) > 5 and (s.get("abs_12m") or 99) < 10:
         outs.append(f"단, 최근 3개월 {s['ret_3m']:+.0f}% — 인식이 붙기 시작")
     if not outs:

@@ -357,6 +357,61 @@ def quarterly_from_periods(tag_lists: list[list[tuple]], concept: str,
     return best
 
 
+def _earnings_dates_from(subs: dict, n: int) -> list:
+    """submissions JSON → 실적발표일 목록 (8-K Item 2.02, 최신순, 중복 제거)."""
+    rec = (subs.get("filings") or {}).get("recent") or {}
+    out = set()
+    for f, dt, it in zip(rec.get("form", []), rec.get("filingDate", []),
+                         rec.get("items", [])):
+        if f == "8-K" and "2.02" in (it or ""):
+            try:
+                out.add(datetime.strptime(dt, "%Y-%m-%d").date())
+            except (ValueError, TypeError):
+                continue
+    return sorted(out, reverse=True)[:n]
+
+
+def sec_earnings_dates(cik: int, n: int = 8) -> list:
+    """실적발표일 — SEC 8-K Item 2.02(실적 공표) 접수일.
+
+    Yahoo 컨센서스는 크럼 인증(401)으로 무료 접근 불가. 대신 발표일만 있으면
+    '발표 전후 시장 반응'으로 시장이 매긴 실적 평가를 잴 수 있다(컨센 대비
+    서프라이즈의 시장 버전 — PEAD 문헌의 표준 프록시).
+    """
+    d = fetch_json(f"https://data.sec.gov/submissions/CIK{cik:010d}.json",
+                   ttl_hours=24)
+    return _earnings_dates_from(d, n)
+
+
+def _parse_finnhub(payload) -> dict | None:
+    """Finnhub /stock/earnings 응답 → 최신 분기 서프라이즈."""
+    if not isinstance(payload, list) or not payload:
+        return None
+    e = payload[0]
+    try:
+        return {"actual": float(e["actual"]), "estimate": float(e["estimate"]),
+                "spct": float(e.get("surprisePercent") or
+                              100.0 * (e["actual"] / e["estimate"] - 1.0)),
+                "period": e.get("period", "")}
+    except (KeyError, TypeError, ValueError, ZeroDivisionError):
+        return None
+
+
+def finnhub_surprise(ticker: str) -> dict | None:
+    """EPS 서프라이즈 (Finnhub 무료 티어). 키 없으면 조용히 None —
+    이 지표는 표시·진단용이지 점수 재료가 아니므로 결측이 판정을 바꾸지 않는다."""
+    from .keys import finnhub_key
+    k = finnhub_key()
+    if not k:
+        return None
+    url = (f"https://finnhub.io/api/v1/stock/earnings"
+           f"?symbol={urllib.parse.quote(ticker)}&token={k}")
+    try:
+        return _parse_finnhub(fetch_json(url, ttl_hours=24))
+    except FetchError:
+        return None
+
+
 def xbrl_annual(facts: dict, concept: str,
                 units: tuple = ("USD", "shares")) -> dict[int, float]:
     """연도별 시계열 {회계연도: 값}. 분기가 아예 없는 신고자용 폴백.

@@ -18,9 +18,11 @@ from .sources import (
     edgar_fts,
     fedreg_signal,
     financials_snapshot,
+    finnhub_surprise,
     fred_series,
     quarterly_from_periods,
     sec_company_facts,
+    sec_earnings_dates,
     snapshot_quarterly,
     xbrl_quarterly,
     yahoo_prices,
@@ -646,6 +648,23 @@ def per_stock(tickers: list[str], tmap: dict, prices: dict, bench: list) -> list
             if m_now and m_prev:
                 row["derate"] = 100.0 * (m_now / m_prev - 1.0)
 
+        # 실적발표 연동 — 최근 발표일(8-K 2.02)과 발표 전후 시장 반응.
+        # 컨센서스가 없어도 시장 반응이 실적 평가다. Finnhub 키가 있으면
+        # EPS 서프라이즈도 병기(러너 시크릿에만 있음 — 로컬 결측 정상).
+        if cik and len(px) > 10:
+            try:
+                eds = sec_earnings_dates(cik, 1)
+            except FetchError:
+                eds = []
+            if eds:
+                row["earn_date"] = eds[0].isoformat()
+                r_ = earnings_reaction(px, bench, eds[0])
+                if r_ is not None:
+                    row["earn_react"] = r_
+        sp = finnhub_surprise(t)
+        if sp is not None:
+            row["eps_surprise"] = sp["spct"]
+
         # 분기가 아예 없는 신고자(캐나다 40-F 등)는 연간으로 폴백 —
         # 1년 늦은 진실이 공백보다 낫다. 표에는 '연간재무 기준'을 표시한다.
         if "rev_yoy" not in row and facts is not None:
@@ -659,6 +678,21 @@ def per_stock(tickers: list[str], tmap: dict, prices: dict, bench: list) -> list
 # 수혜 강도 구성: 매출 성장(수요 전이) + 매출 가속(촉매가 '지금' 도착하는 증거)
 # + 이익률 개선(가격 전가·레버리지). 가중치는 백테스트 전까지 잠정값이다.
 BENEFIT_PARTS = [("rev_yoy", 0.45), ("rev_accel", 0.15), ("opm_delta", 0.40)]
+
+
+def earnings_reaction(px: list, bench: list, d0) -> float | None:
+    """발표 전 마지막 종가 → 발표 후 첫 종가의 수익률, 시장(벤치) 차감(%p).
+
+    컨센서스 없이 '시장이 매긴 실적 평가'를 잰다 — 발표가 장 전이든 장 후든
+    전일 종가와 발표 후 첫 종가 사이에 반응이 담긴다.
+    """
+    pm = [v for d, v in px if d < d0]
+    pp = [v for d, v in px if d > d0]
+    bm = [v for d, v in bench if d < d0]
+    bp = [v for d, v in bench if d > d0]
+    if not (pm and pp and bm and bp):
+        return None
+    return 100.0 * (pp[0] / pm[-1] - 1.0) - 100.0 * (bp[0] / bm[-1] - 1.0)
 
 
 def _drop_meaningless_margin(row: dict) -> None:

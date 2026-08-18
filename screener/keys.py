@@ -56,3 +56,8 @@ def data_gov_key() -> str | None:
     """api.data.gov 키 하나로 EPA CAMPD·Regulations.gov 등을 함께 쓴다."""
     return load_key("DATA_GOV_API_KEY", "data_gov_key.txt",
                     "DATA_GOV_API", "DATAGOV_API_KEY")
+
+
+def finnhub_key() -> str | None:
+    """Finnhub — EPS 서프라이즈(실적발표 연동). 시크릿 이름은 FINNHUB 로 등록됨."""
+    return load_key("FINNHUB", "finnhub_key.txt", "FINNHUB_KEY", "FINNHUB_API_KEY")

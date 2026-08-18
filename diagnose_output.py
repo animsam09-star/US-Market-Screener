@@ -53,6 +53,16 @@ def main() -> int:
     if fails and not seen:
         print("- 실패 샘플: 전부 회로차단 후속 (원인은 첫 4회 — 산출물에 미기록)")
 
+    # 실적발표 연동 상태 — 반응(8-K)과 EPS 서프라이즈(Finnhub)가 몇 종목에서
+    # 채워졌는지. 서프라이즈 0곳이면 FINNHUB 시크릿·응답 구조를 의심할 것
+    try:
+        n_react = h.count("실적반응")
+        n_eps = h.count("EPS 서프라이즈 ")
+        print(f"- 실적발표 연동: 반응열 {'표시' if n_react else '없음'} / "
+              f"EPS 서프라이즈 {n_eps}종목")
+    except Exception:
+        pass
+
     # FRED 가 이 환경에서 실시간으로 닿는지 — 캐시 우회(ttl 0)
     try:
         from screener.net import fetch
