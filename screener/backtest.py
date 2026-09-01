@@ -196,6 +196,85 @@ def evaluate_asof(theme: dict, when: date, ctx: Ctx) -> ThemeResult:
     return r
 
 
+def latest_earnings_before(dates: list, when: date,
+                           max_age_days: int = 120) -> date | None:
+    """스냅샷 시점에 '알 수 있었던' 가장 최근 실적발표일.
+
+    발표일 자체는 과거에도 사실이지만 D 이후 발표는 미래 정보다.
+    120일 넘은 발표는 다음 발표가 이미 지났어야 하는 낡은 신호라 무효.
+    """
+    prior = [d for d in dates if d <= when and (when - d).days <= max_age_days]
+    return max(prior) if prior else None
+
+
+def run_pead(start: date, end: date | None = None) -> dict:
+    """실적반응(PEAD) 신호의 예측력 검증 — 점수 편입 여부를 결정하는 근거.
+
+    각 분기말 D 에: 직전 실적발표(≤D)의 시장 반응(발표 전일→후일, SPY 차감)을
+    재고, 이후 6·12개월 종목 상대수익률과의 순위 상관(IC)·상하위 스프레드를
+    본다. 관측 단위는 종목-분기(테마가 아니라 종목 수준 신호라서).
+    """
+    import yaml as _yaml
+
+    from .signals import earnings_reaction
+    from .sources import sec_earnings_dates
+
+    cfg = _yaml.safe_load((ROOT / "themes.yaml").read_text(encoding="utf-8"))
+    tickers = sorted({t.upper() for th in cfg.get("themes", [])
+                      for t in th["tickers"]})
+    bench_tkr = cfg.get("benchmark", "SPY")
+    today = date.today()
+    last = end or (today - timedelta(days=380))
+
+    tmap = sec_ticker_map()
+    bench = yahoo_prices(bench_tkr, "max")
+    snaps = quarter_ends(start, last)
+    print(f"PEAD 검증: 종목 {len(tickers)} × 스냅샷 {len(snaps)}", flush=True)
+
+    recs = []
+    for t in tickers:
+        cik = tmap.get(t)
+        if not cik:
+            continue
+        try:
+            px = yahoo_prices(t, "max")
+            eds = sec_earnings_dates(cik, 40)
+        except Exception as e:
+            print(f"  [주의] {t}: {type(e).__name__}: {e}")
+            continue
+        for d in snaps:
+            e0 = latest_earnings_before(eds, d)
+            if e0 is None:
+                continue
+            react = earnings_reaction([p for p in px if p[0] <= d],
+                                      [b for b in bench if b[0] <= d], e0)
+            if react is None:
+                continue
+            f6 = forward_return(px, d, 182)
+            f12 = forward_return(px, d, 365)
+            b6 = forward_return(bench, d, 182)
+            b12 = forward_return(bench, d, 365)
+            recs.append({"ticker": t, "date": d.isoformat(), "react": react,
+                         "fwd6": (f6 - b6) if None not in (f6, b6) else None,
+                         "fwd12": (f12 - b12) if None not in (f12, b12) else None})
+    return {"records": recs}
+
+
+def analyze_pead(recs: list) -> dict:
+    out = {}
+    for k in ("fwd6", "fwd12"):
+        pairs = [(r["react"], r[k]) for r in recs if r.get(k) is not None]
+        ic = spearman(pairs)
+        top = bot = None
+        if len(pairs) >= 30:
+            srt = sorted(pairs)
+            n3 = len(srt) // 3
+            bot = statistics.fmean(v for _, v in srt[:n3])
+            top = statistics.fmean(v for _, v in srt[-n3:])
+        out[k] = {"ic": ic, "n": len(pairs), "top3rd": top, "bot3rd": bot}
+    return out
+
+
 # ================================================================ 실행
 
 def quarter_ends(start: date, end: date) -> list[date]:
@@ -460,6 +539,27 @@ def write_report(result: dict, ana: dict, path_md: Path, path_html: Path) -> Non
         "  실전과 다르게 나온다.",
         "- 테마 정의 자체가 현재 버전이다(과거의 우리가 이 테마를 골랐으리란 보장 없음).",
     ]
+    # PEAD 검증 결과가 있으면 함께 싣는다 — '검증했고 탈락했다'도 기록이다
+    pead_p = ROOT / "reports" / "pead_backtest.json"
+    if pead_p.exists():
+        import json as _json
+        try:
+            pd_ = _json.loads(pead_p.read_text(encoding="utf-8"))
+            a6, a12 = pd_["analysis"]["fwd6"], pd_["analysis"]["fwd12"]
+            lines += [
+                "",
+                "## 6. 실적반응(PEAD) 신호 검증 — 편입 보류",
+                "",
+                f"종목-분기 {pd_['n']:,}건: 6개월 IC {a6['ic']:+.3f}, "
+                f"12개월 IC {a12['ic']:+.3f} — 소음 수준(기준 +0.10).",
+                f"상위⅓ vs 하위⅓ 12개월 스프레드 {a12['top3rd']:+.1f}%p vs "
+                f"{a12['bot3rd']:+.1f}%p.",
+                "분기 스냅샷 설계상 발표 후 최대 120일 낡은 신호가 섞여 PEAD 의",
+                "단기(60일) 효과가 희석된 탓일 수 있으나, 현 설계에서 예측력이",
+                "없으므로 점수에 넣지 않는다. 표시·진단용으로만 유지.",
+            ]
+        except Exception:
+            pass
     md = "\n".join(lines) + "\n"
     path_md.write_text(md, encoding="utf-8")
 
@@ -491,10 +591,27 @@ def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--start", default="2019-09-30")
     ap.add_argument("--end", default=None)
+    ap.add_argument("--pead", action="store_true",
+                    help="실적반응(PEAD) 신호 검증만 실행")
     args = ap.parse_args()
 
     start = date.fromisoformat(args.start)
     end = date.fromisoformat(args.end) if args.end else None
+
+    if args.pead:
+        import json
+        res = run_pead(start, end)
+        ana = analyze_pead(res["records"])
+        (ROOT / "reports" / "pead_backtest.json").write_text(
+            json.dumps({"analysis": ana, "n": len(res["records"])},
+                       ensure_ascii=False, indent=1), encoding="utf-8")
+        print(f"\nPEAD 관측 {len(res['records'])}건 (종목-분기)")
+        for k, d in ana.items():
+            ic = f"{d['ic']:+.3f}" if d["ic"] is not None else "—"
+            spread = (f" 상위⅓ {d['top3rd']:+.1f}%p vs 하위⅓ {d['bot3rd']:+.1f}%p"
+                      if d["top3rd"] is not None else "")
+            print(f"  {k}: IC {ic} (n={d['n']}){spread}")
+        return 0
     result = run(start, end)
     if not result["records"]:
         print("관측 0건 — 데이터 수집 실패 여부를 확인하세요")

@@ -765,6 +765,28 @@ def f29_census_time_param():
     check("F29 공백 인코딩", " " not in u, u)
 
 
+# ---------------------------------------------------------------- F41
+def f41_pead_point_in_time():
+    """PEAD 백테스트도 미래 정보 컷이 전부다 — 스냅샷 이후 발표는 안 보인다.
+
+    발표일(8-K 접수일)은 과거에도 사실 그대로지만, 스냅샷 D 시점에는
+    D 이전 발표만 알 수 있고, 너무 오래된 발표(120일+)는 신호가 아니다.
+    """
+    from datetime import date as _d
+
+    from screener.backtest import latest_earnings_before
+
+    eds = [_d(2025, 8, 6), _d(2025, 5, 7), _d(2025, 2, 5)]
+    check("F41 스냅샷 이전 최신 발표",
+          latest_earnings_before(eds, _d(2025, 6, 30)) == _d(2025, 5, 7))
+    check("F41 미래 발표는 안 보임",
+          latest_earnings_before(eds, _d(2025, 3, 31)) == _d(2025, 2, 5))
+    check("F41 120일 지난 발표는 무효(신호 아님)",
+          latest_earnings_before(eds, _d(2025, 12, 31)) is None)
+    check("F41 발표 전이면 None",
+          latest_earnings_before(eds, _d(2025, 1, 1)) is None)
+
+
 # ---------------------------------------------------------------- F40
 def f40_earnings_link():
     """실적발표 연동 — 컨센서스 없이도 발표일과 시장 반응은 잴 수 있다.
@@ -1209,7 +1231,8 @@ def main() -> int:
                f32_asof_no_future_leak, f33_forward_return_alive_only,
                f34_asof_no_snapshot_fallback, f35_replacement_needs_trigger,
                f36_xbrl_tag_and_fiscal_calendar, f37_annual_fallback,
-               f38_why_flat_diagnosis, f39_week_changes, f40_earnings_link]:
+               f38_why_flat_diagnosis, f39_week_changes, f40_earnings_link,
+               f41_pead_point_in_time]:
         try:
             fn()
         except Exception as e:
