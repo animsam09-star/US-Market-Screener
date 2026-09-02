@@ -765,6 +765,42 @@ def f29_census_time_param():
     check("F29 공백 인코딩", " " not in u, u)
 
 
+# ---------------------------------------------------------------- F42
+def f42_price_snapshot_fallback():
+    """Yahoo·Stooq 가 같은 날 다 막혀도 주가 축이 죽으면 안 된다.
+
+    실측: 러너에서 하루 두 소스 동시 실패로 한 테마 주가 축 전멸(다음 날
+    자연 복구). 동봉 스냅샷 3단 폴백 + 사용 사실 기록(조용한 폴백 금지).
+    """
+    import screener.sources as S
+
+    # F7 이 net 을 reload 하면 모듈이 갈라진다 — sources 가 '실제로 쓰는'
+    # fetch 의 전역을 직접 잡아야 차단 주입이 먹힌다
+    dead = S.fetch.__globals__["_dead"]
+    old_snap, old_used = S._PRICE_SNAP, set(S.PRICES_FROM_SNAPSHOT)
+    old_dead = set(dead)
+    try:
+        S._PRICE_SNAP = {"generated": "2026-08-20", "prices": {
+            "ZZTEST": [["2026-08-18", 10.0], ["2026-08-19", 10.5]]}}
+        S.PRICES_FROM_SNAPSHOT.clear()
+        # 두 호스트를 죽은 것으로 만들어 네트워크 없이 폴백 경로만 검증
+        dead.update({"query1.finance.yahoo.com", "stooq.com"})
+        px = S.yahoo_prices("ZZTEST")
+        check("F42 스냅샷 폴백 동작", len(px) == 2 and px[-1][1] == 10.5, str(px))
+        check("F42 사용 사실 기록", "ZZTEST" in S.PRICES_FROM_SNAPSHOT)
+        try:
+            S.yahoo_prices("NOSNAP")
+            check("F42 스냅샷에도 없으면 실패", False, "예외 없이 반환됨")
+        except S.FetchError:
+            check("F42 스냅샷에도 없으면 실패", True)
+    finally:
+        S._PRICE_SNAP = old_snap
+        dead.clear()
+        dead.update(old_dead)
+        S.PRICES_FROM_SNAPSHOT.clear()
+        S.PRICES_FROM_SNAPSHOT.update(old_used)
+
+
 # ---------------------------------------------------------------- F41
 def f41_pead_point_in_time():
     """PEAD 백테스트도 미래 정보 컷이 전부다 — 스냅샷 이후 발표는 안 보인다.
@@ -1232,7 +1268,7 @@ def main() -> int:
                f34_asof_no_snapshot_fallback, f35_replacement_needs_trigger,
                f36_xbrl_tag_and_fiscal_calendar, f37_annual_fallback,
                f38_why_flat_diagnosis, f39_week_changes, f40_earnings_link,
-               f41_pead_point_in_time]:
+               f41_pead_point_in_time, f42_price_snapshot_fallback]:
         try:
             fn()
         except Exception as e:

@@ -952,17 +952,26 @@ def build_html(results: list[ThemeResult], *, benchmark: str = "SPY") -> str:
                  if any(s.key == "U4" and s.score is None for s in r.unpriced)
                  and not any(s.key == "U3" and s.score is None for s in r.unpriced))
     dead_fin = sum(1 for r in ranked if not r.series.get("n_companies"))
+    from .sources import PRICES_FROM_SNAPSHOT as _snap_used
     warn = ""
-    if dead_px or short3 or dead_fin:
+    if dead_px or short3 or dead_fin or _snap_used:
         items = []
         if dead_px:
             items.append(f"<li><strong>주가 미확보 {dead_px}/{len(ranked)}개 테마</strong> — "
                          "‘주가 미반응’·‘고점 대비 눌림’ 두 축이 빠졌습니다. "
-                         "Yahoo 가 클라우드 IP 를 차단했을 수 있습니다(Stooq 폴백도 실패).</li>")
+                         "Yahoo·Stooq·동봉 스냅샷 3단 폴백이 전부 실패한 상태로, "
+                         "보통 다음 날 실행에서 자동 복구됩니다.</li>")
         if short3:
             items.append(f"<li><strong>3년 축 미측정 {short3}개 테마</strong> — "
                          "상장 3년 이상 종목이 없어 장기 미반영(U4)을 잴 수 없습니다. "
                          "조회 실패가 아니라 이력 부족입니다.</li>")
+        from .sources import PRICES_FROM_SNAPSHOT
+        if PRICES_FROM_SNAPSHOT:
+            from .sources import _price_snapshot
+            gen = _price_snapshot().get("generated", "?")
+            items.append(f"<li><strong>주가 스냅샷 폴백 {len(PRICES_FROM_SNAPSHOT)}종목</strong> "
+                         f"({gen} 기준) — 실시간 조회가 막혀 동봉 스냅샷을 썼습니다. "
+                         "낡은 만큼 최근 주가 축의 정밀도가 낮습니다.</li>")
         if dead_fin:
             items.append(f"<li><strong>SEC 재무 미확보 {dead_fin}개 테마</strong> — "
                          "실적·밸류에이션 축이 빠졌습니다. User-Agent 미설정 시 SEC 가 "

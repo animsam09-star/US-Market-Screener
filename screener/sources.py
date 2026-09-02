@@ -9,6 +9,7 @@ Federal Register : 규제 시행 (정책 축)
 from __future__ import annotations
 
 import io
+import json
 import re
 import statistics
 import urllib.parse
@@ -644,17 +645,45 @@ def _stooq(ticker: str) -> list[tuple[date, float]]:
     return out
 
 
-def yahoo_prices(ticker: str, rng: str = "5y") -> list[tuple[date, float]]:
-    """주가. Yahoo 우선, 실패하면 Stooq.
+PRICES_FROM_SNAPSHOT: set = set()   # 스냅샷 폴백을 쓴 티커 — 경고 배너 재료
+_PRICE_SNAP: dict | None = None
 
-    Yahoo 는 클라우드 IP(GitHub Actions 러너 등)를 차단하는 일이 잦다.
-    그러면 미반영 축 4개 중 2개(주가 미반응·고점 대비 눌림)가 통째로 죽는데,
-    로컬에서는 멀쩡해서 눈치채기 어렵다. 그래서 폴백을 둔다.
+
+def _price_snapshot() -> dict:
+    global _PRICE_SNAP
+    if _PRICE_SNAP is None:
+        import gzip as _gz
+        p = Path(__file__).resolve().parent.parent / "data" / "price_snapshot.json.gz"
+        try:
+            with _gz.open(p, "rb") as f:
+                _PRICE_SNAP = json.loads(f.read().decode("utf-8"))
+        except Exception:
+            _PRICE_SNAP = {}
+    return _PRICE_SNAP
+
+
+def yahoo_prices(ticker: str, rng: str = "5y") -> list[tuple[date, float]]:
+    """주가. Yahoo → Stooq → 동봉 스냅샷 3단 폴백.
+
+    Yahoo 는 클라우드 IP(GitHub Actions 러너 등)를 차단하는 일이 잦고,
+    Stooq 까지 같은 날 막힌 실측 사례가 있다(한 테마 주가 축 전멸 후 다음 날
+    자연 복구). 몇 주 낡은 스냅샷이라도 12개월 축은 대체로 유효하다 —
+    사용 사실은 PRICES_FROM_SNAPSHOT 에 남겨 대시보드가 경고한다.
     """
     try:
         return _yahoo(ticker, rng)
     except FetchError:
+        pass
+    try:
         return _stooq(ticker)
+    except FetchError:
+        snap = _price_snapshot()
+        rows = (snap.get("prices") or {}).get(ticker.upper())
+        if rows:
+            PRICES_FROM_SNAPSHOT.add(ticker.upper())
+            return [(datetime.strptime(d, "%Y-%m-%d").date(), float(v))
+                    for d, v in rows]
+        raise
 
 
 # ---------------------------------------------------------------- 정책
