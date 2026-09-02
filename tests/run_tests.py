@@ -180,6 +180,17 @@ def f7_empty_secret_fallback():
             os.environ["SCREENER_UA"] = old
         import screener.net as N
         importlib.reload(N)
+        # reload 는 net 의 이름들을 새 객체로 갈아끼우지만, 다른 모듈이
+        # from-import 로 물고 있는 옛 객체는 그대로다 — FetchError 클래스가
+        # 갈라져 '새 클래스로 raise 된 예외를 옛 클래스 except 가 못 잡는'
+        # 유령이 된다(F42 실측: 3단 폴백이 시험에서만 무력화). 재동기화한다.
+        import sys as _sys
+        for _mn, _m in list(_sys.modules.items()):
+            if _mn.startswith("screener.") and _m is not N:
+                for _n in ("FetchError", "NotFound", "fetch", "fetch_json",
+                           "fetch_text"):
+                    if hasattr(_m, _n) and hasattr(N, _n):
+                        setattr(_m, _n, getattr(N, _n))
 
 
 # ---------------------------------------------------------------- F8
