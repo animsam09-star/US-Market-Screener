@@ -224,7 +224,7 @@ def run_pead(start: date, end: date | None = None) -> dict:
                       for t in th["tickers"]})
     bench_tkr = cfg.get("benchmark", "SPY")
     today = date.today()
-    last = end or (today - timedelta(days=380))
+    last = end or last_complete_snapshot(today)
 
     tmap = sec_ticker_map()
     bench = yahoo_prices(bench_tkr, "max")
@@ -277,6 +277,16 @@ def analyze_pead(recs: list) -> dict:
 
 # ================================================================ 실행
 
+def last_complete_snapshot(today: date) -> date:
+    """12개월 전방 수익률이 완결되는 마지막 스냅샷의 상한.
+
+    d+365일 시점 가격이 있어야 하고 price_at 은 10일까지 낡은 가격을 인정
+    → d ≤ today−375. 종전 여유 380일은 분기말을 하루 차이로 떨어뜨렸다
+    (2026-10-14 실측: 2025-09-30 이 빠져 표본이 두 달째 안 늘고 있었다).
+    """
+    return today - timedelta(days=375)
+
+
 def quarter_ends(start: date, end: date) -> list[date]:
     out = []
     y, m = start.year, ((start.month - 1) // 3 + 1) * 3
@@ -309,7 +319,7 @@ def run(start: date, end: date | None = None) -> dict:
     bench_tkr = cfg.get("benchmark", "SPY")
     today = date.today()
     # 12개월 전방 수익률이 완결되는 마지막 스냅샷까지만
-    last = end or (today - timedelta(days=380))
+    last = end or last_complete_snapshot(today)
 
     print("티커→CIK 매핑…", flush=True)
     ctx = Ctx(tmap=sec_ticker_map())

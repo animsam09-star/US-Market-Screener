@@ -776,6 +776,25 @@ def f29_census_time_param():
     check("F29 공백 인코딩", " " not in u, u)
 
 
+# ---------------------------------------------------------------- F43
+def f43_sample_window():
+    """표본 상한 여유가 과하면 완결된 분기를 하루 차이로 버린다.
+
+    실측(2026-10-14): 여유 380일이 2025-09-30 스냅샷을 떨어뜨려(한도 9-29)
+    백테스트 표본이 두 달째 안 늘고 있었다. 조건의 본질은 d+365일 가격
+    (신선도 10일 인정) — 375일이면 충분하다.
+    """
+    from datetime import date as _d
+
+    from screener.backtest import last_complete_snapshot, quarter_ends
+
+    lim = last_complete_snapshot(_d(2026, 10, 14))
+    qs = quarter_ends(_d(2019, 9, 30), lim)
+    check("F43 완결 분기 포함(9/30)", qs[-1] == _d(2025, 9, 30), str(qs[-1]))
+    check("F43 미완결 분기 제외(12/31)", _d(2025, 12, 31) not in qs)
+    check("F43 전방 완결 보장", (_d(2026, 10, 14) - lim).days >= 365 + 10)
+
+
 # ---------------------------------------------------------------- F42
 def f42_price_snapshot_fallback():
     """Yahoo·Stooq 가 같은 날 다 막혀도 주가 축이 죽으면 안 된다.
@@ -1279,7 +1298,8 @@ def main() -> int:
                f34_asof_no_snapshot_fallback, f35_replacement_needs_trigger,
                f36_xbrl_tag_and_fiscal_calendar, f37_annual_fallback,
                f38_why_flat_diagnosis, f39_week_changes, f40_earnings_link,
-               f41_pead_point_in_time, f42_price_snapshot_fallback]:
+               f41_pead_point_in_time, f42_price_snapshot_fallback,
+               f43_sample_window]:
         try:
             fn()
         except Exception as e:
