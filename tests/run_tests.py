@@ -776,6 +776,41 @@ def f29_census_time_param():
     check("F29 공백 인코딩", " " not in u, u)
 
 
+# ---------------------------------------------------------------- F44
+def f44_stable_axis_gate():
+    """'볼 만함'은 주도 축이 양 시기 모두 예측력이 확인된 축일 때만.
+
+    실측(2026-10-14, 400건): A7 마진·A8 재고는 12M IC 가 전반 +0.19/−0.20,
+    후반 −0.24/+0.20 으로 시기에 따라 뒤집혔고, 이런 축이 최상위인 '볼 만함'
+    10건은 승률 50%·평균 +0.2%p(동전 던지기)였다. 안정 축(A1·A2·A9) 주도
+    15건은 승률 80%·평균 +33.5%p. 뒤집히는 축 주도는 '지켜볼 만'으로 강등.
+    """
+    from screener.axes import Signal, resolve_catalysts
+    from screener.dashboard import _verdict
+    from screener.signals import ThemeResult
+
+    def theme(ax_key, ax_label, ax_score):
+        r = ThemeResult(name="t", thesis="", tickers=["A"])
+        r.claimed, _ = resolve_catalysts(["공급", "마진"])
+        r.catalyst = [
+            Signal(ax_key, ax_label, ax_score, "ok", "d"),
+            Signal("A2" if ax_key != "A2" else "A7",
+                   "보조", 30, "ok", "d"),
+        ]
+        r.unpriced = [Signal("U3", "주가", 70, "ok", "d"),
+                      Signal("U4", "장기", 60, "ok", "d")]
+        return r
+
+    r1 = theme("A2", "② 공급", 90)
+    t1, _c, _x = _verdict(r1)
+    check("F44 안정 축(A2) 주도는 볼 만함", t1 == "볼 만함", t1)
+
+    r2 = theme("A7", "⑦ 마진", 90)
+    t2, _c, txt2 = _verdict(r2)
+    check("F44 뒤집히는 축(A7) 주도는 지켜볼 만", t2 == "지켜볼 만", t2)
+    check("F44 강등 사유를 문장에 명시", "예측력" in txt2, txt2[:80])
+
+
 # ---------------------------------------------------------------- F43
 def f43_sample_window():
     """표본 상한 여유가 과하면 완결된 분기를 하루 차이로 버린다.
@@ -1299,7 +1334,7 @@ def main() -> int:
                f36_xbrl_tag_and_fiscal_calendar, f37_annual_fallback,
                f38_why_flat_diagnosis, f39_week_changes, f40_earnings_link,
                f41_pead_point_in_time, f42_price_snapshot_fallback,
-               f43_sample_window]:
+               f43_sample_window, f44_stable_axis_gate]:
         try:
             fn()
         except Exception as e:
