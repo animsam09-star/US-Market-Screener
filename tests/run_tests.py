@@ -776,6 +776,49 @@ def f29_census_time_param():
     check("F29 공백 인코딩", " " not in u, u)
 
 
+# ---------------------------------------------------------------- F45
+def f45_stable_axes_self_update():
+    """안정 축 목록은 하드코딩이 아니라 백테스트 산출물에서 재선정된다.
+
+    지적: "지금은 후반기인데 옛날 방식으로 하면 어떡해" — 고정 목록은 낡는다.
+    구조: backtest.analyze 가 축별 전·후반 IC 와 stable 플래그를 axis_ic.json
+    에 쓰고, dashboard 게이트는 그 플래그를 읽는다(없으면 폴백 상수).
+    기준은 '전체 IC > 0.15 + 양 반기 모두 양수' — 최근 반기만 보는
+    walk-forward 는 4변형 실측 전부 더 나빴다(12M 완결 지연).
+    """
+    from screener.backtest import analyze
+
+    def rec(d, ax, sc, fwd):
+        return {"date": d, "verdict": "지금은 아님", "axes": {ax: sc},
+                "uaxes": {}, "fwd12": fwd, "fwd6": fwd, "rank": 50,
+                "rebound": False}
+
+    # AX: 양 반기 모두 점수↑=수익↑ (안정), AY: 전반 정방향·후반 역방향 (뒤집힘)
+    records = []
+    for i in range(12):
+        records.append(rec(f"2020-{i%9+1:02d}-01", "AX", i * 10, i * 2.0))
+        records.append(rec(f"2020-{i%9+1:02d}-01", "AY", i * 10, i * 2.0))
+    for i in range(12):
+        records.append(rec(f"2024-{i%9+1:02d}-01", "AX", i * 10, i * 2.0))
+        records.append(rec(f"2024-{i%9+1:02d}-01", "AY", i * 10, -i * 2.0))
+    ana = analyze({"records": records})
+    ax, ay = ana["axis_ic"]["AX"], ana["axis_ic"]["AY"]
+    check("F45 양반기 양수 축은 stable", ax.get("stable") is True, str(ax))
+    check("F45 후반 역방향 축은 stable 아님", ay.get("stable") is False, str(ay))
+    check("F45 전·후반 IC 동봉", "ic_early" in ax and "ic_late" in ax)
+
+    # dashboard 게이트가 플래그를 읽는다 (플래그 없으면 폴백)
+    import screener.dashboard as db
+    old = db.AXIS_IC
+    try:
+        db.AXIS_IC = {"A7": {"ic": 0.3, "stable": True}}
+        check("F45 게이트가 json 플래그를 따름", db._stable_axes() == {"A7"})
+        db.AXIS_IC = {"A7": {"ic": 0.3}}
+        check("F45 플래그 없으면 폴백", db._stable_axes() == db._STABLE_FALLBACK)
+    finally:
+        db.AXIS_IC = old
+
+
 # ---------------------------------------------------------------- F44
 def f44_stable_axis_gate():
     """'볼 만함'은 주도 축이 양 시기 모두 예측력이 확인된 축일 때만.
@@ -1334,7 +1377,7 @@ def main() -> int:
                f36_xbrl_tag_and_fiscal_calendar, f37_annual_fallback,
                f38_why_flat_diagnosis, f39_week_changes, f40_earnings_link,
                f41_pead_point_in_time, f42_price_snapshot_fallback,
-               f43_sample_window, f44_stable_axis_gate]:
+               f43_sample_window, f44_stable_axis_gate, f45_stable_axes_self_update]:
         try:
             fn()
         except Exception as e:

@@ -410,14 +410,35 @@ def analyze(result: dict) -> dict:
     yearly = [r for r in judged if r["date"][5:7] == "12"]
     by_verdict_y = {k: _stats(v) for k, v in _grp(yearly, lambda r: r["verdict"]).items()}
 
-    # 축별 유효성: 축 점수와 이후 12개월 상대수익률의 순위 상관
+    # 축별 유효성: 축 점수와 이후 12개월 상대수익률의 순위 상관.
+    # 전·후반(관측 중앙 날짜 기준) IC 도 같이 내서, 레짐이 바뀌어도 부호가
+    # 유지되는 '안정 축'을 데이터가 쌓일 때마다 재선정한다(stable 플래그 —
+    # dashboard 의 '볼 만함' 게이트가 이 파일을 읽는다. 하드코딩이면 규칙이
+    # 낡는다는 지적에 따른 구조). 기준: 전체 IC > 0.15 이고 양 반기 모두 양수.
+    # '최근 반기만 양수'를 안정으로 치지 않는 이유: 12M 수익률 완결 지연 탓에
+    # 최근 레짐 IC 는 1년+ 늦게 도착하고, walk-forward 실측 4변형 전부
+    # 양반기 기준보다 나빴다(후반 큰 승자를 강등하고 큰 패자를 유지).
+    dates = sorted(r["date"] for r in records if r.get("fwd12") is not None)
+    mid = dates[len(dates) // 2] if dates else ""
     axis_ic: dict = {}
     for group_key, sub in (("axes", "A"), ("uaxes", "U")):
         keys = sorted({k for r in records for k in r[group_key]})
         for k in keys:
             pairs = [(r[group_key][k], r["fwd12"]) for r in records
                      if k in r[group_key] and r.get("fwd12") is not None]
-            axis_ic[k] = {"ic": spearman(pairs), "n": len(pairs)}
+            d = {"ic": spearman(pairs), "n": len(pairs)}
+            if sub == "A":
+                e = [(r[group_key][k], r["fwd12"]) for r in records
+                     if k in r[group_key] and r.get("fwd12") is not None
+                     and r["date"] <= mid]
+                l = [(r[group_key][k], r["fwd12"]) for r in records
+                     if k in r[group_key] and r.get("fwd12") is not None
+                     and r["date"] > mid]
+                d["ic_early"], d["ic_late"] = spearman(e), spearman(l)
+                d["stable"] = bool(
+                    (d["ic"] or 0) > 0.15
+                    and (d["ic_early"] or 0) > 0 and (d["ic_late"] or 0) > 0)
+            axis_ic[k] = d
 
     by_rebound = {("되돌림" if k else "일반"): _stats(v)
                   for k, v in _grp(judged, lambda r: r["rebound"]).items()}
