@@ -206,7 +206,8 @@ def _scatter(results: list[ThemeResult]) -> str:
         gate = r.gate_passed
         parts.append(
             f'<circle cx="{x:.1f}" cy="{y:.1f}" r="{7 if gate >= 2 else 5.5}" '
-            f'fill="{BUCKETS[b][2]}" class="pt{" gated" if gate >= 2 else ""}">'
+            f'fill="{BUCKETS[b][2]}" class="pt{" gated" if gate >= 2 else ""}'
+            f'{" pick" if _verdict(r)[0] in _POSITIVE_TAGS else ""}">'
             f'<title>{_e(r.name)} — 촉매 {r.catalyst_score:.0f} / 미반영 '
             f'{r.unpriced_score:.0f} / 게이트 {gate}개 통과</title></circle>')
         anchor = "end" if x > PL + iw * 0.72 else "start"
@@ -308,7 +309,7 @@ def _card(r: ThemeResult, rank: int) -> str:
      <em>· SEC 재무 {sp.get('n_companies', 0)}개사{cust_txt} · 살아있는 축 {r.coverage:.0f}%
      · 기각 {r.n_rejected}개</em></p>
   <p class="verdict-line"><span class="vd {vcls}">{_e(vtag)}</span>{_e(vtext)}</p>
-  {_history_line(r, vtag)}
+  {_theme_answer(r, vtag)}
   {inc_line}
   <details class="detail">
     <summary>근거 자세히 — 축별 판정과 원본 링크</summary>
@@ -400,22 +401,16 @@ def _vstat_span(tag: str) -> str:
             f'· 승률 {s["hit"]:.0f}%</span>')
 
 
-def _history_line(r: ThemeResult, tag: str) -> str:
-    """판정 밑의 전적 문장: 승률 → 예외는 언제였나 → 지금 조건이면 승률은 얼마.
-
-    일반 면책이 아니라 조건부 통계다("승률을 말해주면서 예외는 언제였다,
-    그러나 이럴 경우 승률은 ~에 불과하다"). 예외는 이 테마 자신의 전력을
-    우선하고(정유가 2021~22 랠리를 '이유 약함'으로 놓친 류), 없으면 전체에서.
-    """
+def _history_bits(r: ThemeResult, tag: str) -> list[str]:
+    """판정 전적 문장들: 승률 → 예외는 언제였나 → 지금 조건의 조건부 승률."""
     base = VERDICT_STATS.get(tag)
     recs = [x for x in BT_RECORDS if x.get("verdict") == tag]
     if not base or not recs:
-        return ""
+        return []
     pos = tag in _POSITIVE_TAGS
     parts = [f"과거 같은 판정 {base['n']}번 — 12개월 평균 {base['mean']:+.1f}%p, "
              f"승률 {base['hit']:.0f}%."]
 
-    # 예외: 판정과 반대로 간 가장 큰 사례. 이 테마 자신의 것이 있으면 그걸로.
     def _worst(rs):
         rs = [x for x in rs if x.get("fwd12") is not None]
         if not rs:
@@ -424,28 +419,123 @@ def _history_line(r: ThemeResult, tag: str) -> str:
             else max(rs, key=lambda x: x["fwd12"])
 
     own = _worst([x for x in recs if x.get("theme") == r.name])
-    ex = own if own and ((pos and own["fwd12"] < 0) or (not pos and own["fwd12"] > 20)) \
-        else _worst(recs)
+    ex = own if own and ((pos and own["fwd12"] < 0)
+                         or (not pos and own["fwd12"] > 20)) else _worst(recs)
     if ex and ((pos and ex["fwd12"] < 0) or (not pos and ex["fwd12"] > 20)):
         who = "이 테마가" if ex.get("theme") == r.name else f"{ex['theme']}가"
         direction = "하락" if pos else "랠리"
         parts.append(f"예외: {ex['date'][:7]} {who} 같은 판정에서 "
                      f"{ex['fwd12']:+.1f}%p {direction}.")
 
-    # 지금 조건(주도 촉매 축의 안정성)으로 좁힌 조건부 승률.
-    # 볼 만함·지켜볼 만은 정의 자체가 그 조건이라 중복 서술하지 않는다.
     if not pos and r.top_axes:
         stable = r.top_axes[0].key in STABLE_AXES
         sub = [x for x in recs if (_rec_top1(x) in STABLE_AXES) == stable]
-        s = _bt_stats(sub)
-        if s and s["n"] >= 5 and abs(s["hit"] - base["hit"]) >= 7:
+        st_ = _bt_stats(sub)
+        if st_ and st_["n"] >= 5 and abs(st_["hit"] - base["hit"]) >= 7:
             cond = ("낙수·공급·병목처럼 예측력이 검증된 축" if stable
                     else "시기 따라 예측력이 뒤집히는 축")
-            tail = "에 불과합니다" if s["hit"] < base["hit"] else "로 올라갑니다"
+            tail = "에 불과합니다" if st_["hit"] < base["hit"] else "로 올라갑니다"
             parts.append(f"그러나 지금처럼 주도 촉매가 {cond}인 경우로 좁히면 "
-                         f"승률은 {s['hit']:.0f}%({s['n']}번, 평균 "
-                         f"{s['mean']:+.1f}%p){tail}.")
-    return '<p class="track">' + _e(" ".join(parts)) + "</p>"
+                         f"승률은 {st_['hit']:.0f}%({st_['n']}번, 평균 "
+                         f"{st_['mean']:+.1f}%p){tail}.")
+    return parts
+
+
+def _history_line(r: ThemeResult, tag: str) -> str:
+    bits = _history_bits(r, tag)
+    return ('<p class="track">' + _e(" ".join(bits)) + "</p>") if bits else ""
+
+
+def _sector_picks(ranked: list[ThemeResult]) -> str:
+    """사분면에서 고른 추천 섹터 — 히어로 옆 핵심 출력(상위 판정만)."""
+    rows = []
+    for i, r in enumerate(ranked, 1):
+        tag, cls, text = _verdict(r)
+        if tag not in _POSITIVE_TAGS:
+            continue
+        rows.append(
+            f'<li><a href="#t{i}"><strong>{_e(r.name)}</strong></a>'
+            f'<span class="vd {cls}">{_e(tag)}</span>'
+            f'<span class="sp-co">촉매 {r.catalyst_score:.0f} · '
+            f'미반영 {(r.unpriced_score or 0):.0f}</span>'
+            f'<span class="sp-why">{_e(text)}</span></li>')
+        if len(rows) >= 5:
+            break
+    if not rows:
+        return ('<div class="secpicks"><h2>지금 추천 섹터</h2>'
+                '<p class="nodata">상위 판정(볼 만함·지켜볼 만) 섹터가 지금은 없습니다 — '
+                '이 신호는 연평균 2번꼴로만 뜹니다. 억지로 고르면 승률 50% 그룹입니다.</p></div>')
+    return ('<div class="secpicks"><h2>지금 추천 섹터 — 사분면 우상단부터</h2>'
+            '<ol class="sp-list">' + "".join(rows) + "</ol></div>")
+
+
+def _theme_answer(r: ThemeResult, tag: str) -> str:
+    """'이 섹터 계속 좋아 보이는데, 아닌가?'에 대한 도구의 답 — 카드마다.
+
+    일반 면책이 아니라 앞으로의 판단에 쓰는 설명(사용자 지정): ①지금 무엇이
+    끌고 있고 그 근거는 믿을 만한가 ②가격은 어디인가 ③과거 같은 조건은
+    어떻게 됐나(승률·예외) ④그래서 결론. 정유 사례("촉매는 진짜지만 지금
+    사는 행위의 과거 승률은 29%, 모멘텀은 엣지 밖")를 전 섹터로 일반화.
+    """
+    sents = []
+    tops = r.top_axes
+    stable = bool(tops) and tops[0].key in STABLE_AXES
+    if tops:
+        noun = AXIS_NOUN.get(tops[0].key, tops[0].label)
+        sents.append(
+            f"지금 이 테마를 끌고 있는 근거는 {noun}" +
+            ("입니다 — 백테스트에서 시기와 무관하게 통해 온 축입니다."
+             if stable else
+             "인데, 이 축은 시기에 따라 예측력이 뒤집혀 왔습니다 — "
+             "좋아 보이는 지금 숫자가 이어진다는 보장이 약합니다."))
+    px = next((x for x in r.unpriced if x.key == "U3"), None)
+    rel = px.raw if px and px.raw is not None else None
+    if rel is not None:
+        if rel > 15:
+            sents.append(f"주가는 이미 시장보다 {rel:.0f}%p 앞서 있어 "
+                         "그 근거의 상당 부분은 가격에 들어가 있습니다.")
+        elif rel < -10:
+            sents.append(f"주가는 시장보다 {abs(rel):.0f}%p 뒤처져 있어 "
+                         "근거 대비 가격은 아직입니다.")
+    sents += _history_bits(r, tag)
+    concl = {
+        "볼 만함": "결론: 드물게 확률이 당신 편인 구간입니다. 다만 표본이 "
+                 "작아 보장은 아닙니다.",
+        "이유 약함": "결론: 눌림이 기회처럼 보여도 오를 근거가 데이터로 서지 "
+                  "않았습니다. 근거가 생기기 전까지 '싸다'만으로는 동전 던지기였습니다.",
+        "지금은 아님": "결론: 근거도 가격도 당신 편이 아닙니다. 후보에서 빼는 게 "
+                   "과거 데이터의 답입니다.",
+        "되돌림": "결론: 싸 보이는 것은 저평가가 아니라 과열의 되돌림입니다. "
+               "추세 회복 전에 잡는 것은 떨어지는 칼이었습니다.",
+    }.get(tag)
+    if tag == "지켜볼 만":
+        cand = [AXIS_NOUN.get(x.key, x.label) for x in r.claimed_axes
+                if x.key in STABLE_AXES]
+        up = f" {'·'.join(cand)} 신호가 살아나면" if cand else " 안정 축이 확인되면"
+        concl = ("결론: 조건은 갖췄지만 주도 근거가 믿기 어려워 반 박자 기다릴 "
+                 f"구간입니다.{up} '볼 만함'으로 올라갑니다.")
+    elif tag == "이미 반영":
+        cond_hit = None
+        if tops and BT_RECORDS:
+            sub = [x for x in BT_RECORDS if x.get("verdict") == tag
+                   and (_rec_top1(x) in STABLE_AXES) == stable]
+            st_ = _bt_stats(sub)
+            if st_ and st_["n"] >= 5:
+                cond_hit = st_["hit"]
+        if cond_hit is not None and not stable:
+            concl = (f"결론: 촉매는 진짜지만 '지금 사는 행위'의 과거 승률은 "
+                     f"{cond_hit:.0f}%였습니다. 여기서 더 가는 것은 모멘텀 — "
+                     "이 도구가 검증한 엣지 밖의 영역입니다.")
+        else:
+            concl = ("결론: 촉매는 확인됐지만 가격이 앞서 있습니다. 안정 축 "
+                     "주도라 과거엔 그래도 이어진 편이나, 기대값은 '볼 만함'의 "
+                     "절반 이하였습니다.")
+    if concl:
+        sents.append(concl)
+    if not sents:
+        return ""
+    return ('<p class="track"><strong>지금 판단</strong> — '
+            + _e(" ".join(sents)) + "</p>")
 
 
 def _honesty_html() -> str:
@@ -919,29 +1009,27 @@ CSS = """
 --good:#0e9e54;--warning:#e8a714;--critical:#d03b3b;--seq-200:#b9c2f0;--seq-450:#2d2c92;
 --navy:#1a1a58;--cyan:#00aeef}
 [hidden]{display:none!important}
-@media (min-width:1500px){
- .wrap{max-width:min(97vw,3200px)}
- /* 좌우 배치는 높이를 맞추고(뷰포트 기준) 각 열이 따로 스크롤된다 —
-    페이지 전체를 내리는 대신 창 안에서 내리는 대시보드 방식(사용자 지정) */
- .glance-grid{display:grid;grid-template-columns:minmax(0,1.12fr) minmax(0,1fr);
-  grid-template-rows:auto minmax(0,1fr);gap:0 32px;align-items:stretch;
-  height:calc(100vh - 150px);min-height:560px}
- .g-a{grid-column:1;grid-row:1}
- .g-b{grid-column:1;grid-row:2;overflow-y:auto;padding-right:6px}
- .g-side{grid-column:2;grid-row:1 / span 2;overflow-y:auto;padding-right:6px}
- .glance-grid .prio{margin-top:0}
- .honesty .hon-t{flex:0 0 380px}
+.secpicks h2{margin:4px 0 10px;font-size:17px}
+.sp-list{list-style:none;margin:0;padding:0}
+.sp-list li{padding:9px 0;border-bottom:1px solid var(--border)}
+.sp-list a{text-decoration:none;color:var(--text-primary);font-size:15px;margin-right:8px}
+.sp-list .vd{font-size:11.5px}
+.sp-co{display:inline-block;margin-left:8px;font-size:12.5px;color:var(--text-secondary)}
+.sp-why{display:block;margin-top:3px;font-size:12.5px;line-height:1.5;color:var(--text-secondary)}
+@media (min-width:1400px){
+ .wrap{max-width:min(96vw,2900px)}
+ .hero{display:grid;grid-template-columns:minmax(0,1.55fr) minmax(0,1fr);
+  gap:0 36px;align-items:start}
+ .hero-sc .scatter{width:100%;height:auto}
+ .prio-l{columns:2;column-gap:30px}
+ .prio-l li{break-inside:avoid}
  .cardcols{columns:2;column-gap:28px}
  .cardcols .card{break-inside:avoid;margin-top:0;margin-bottom:18px}
 }
-@media (min-width:2100px){
- .glance-grid{grid-template-columns:minmax(0,1.05fr) minmax(0,.95fr) minmax(0,1.05fr);
-  grid-template-rows:minmax(0,1fr);gap:0 36px}
- .g-a{grid-column:1;grid-row:1;overflow-y:auto;padding-right:6px}
- .g-b{grid-column:2;grid-row:1}
- .g-side{grid-column:3;grid-row:1}
+@media (min-width:2200px){
+ .hero{grid-template-columns:minmax(0,1.8fr) minmax(0,1fr)}
  .cardcols{columns:3;column-gap:30px}
- .hon-l{column-count:2;column-gap:40px}
+ .prio-l{columns:3}
 }
 .tabbar{position:sticky;top:0;z-index:30;display:flex;gap:6px;padding:10px 0 8px;
  background:var(--surface-1);border-bottom:1px solid var(--border);margin:14px 0 18px}
@@ -959,6 +1047,7 @@ CSS = """
  background:var(--plane);color:var(--text-primary);text-decoration:none}
 .chip.v-good{border-color:var(--good)}.chip.v-bad{border-color:var(--critical)}
 .card.flash{outline:3px solid var(--seq-450);transition:outline .2s}
+.pt.pick{stroke:#c9a227;stroke-width:3}
 .track{margin:2px 0 8px;font-size:13px;line-height:1.55;color:var(--text-secondary);
  border-left:3px solid var(--cyan);padding-left:10px}
 .prio-stat{margin-left:auto;font-size:12.5px;color:var(--text-secondary);white-space:nowrap}
@@ -1291,20 +1380,18 @@ r.dataset.theme=r.dataset.theme==='dark'?'light':'dark'">라이트/다크</butto
 </nav>
 
 <section id="pane-glance">
-{_honesty_html()}
-<div class="glance-grid">
-<div class="g-a">
+<div class="hero">
+<div class="hero-sc">
 <h2>사분면 — 촉매 대비 미반영</h2>
 <div class="panel">{_scatter(ranked)}</div>
 </div>
-<div class="g-b">
+<div class="hero-side">
+{_sector_picks(ranked)}
 {_top_picks(ranked)}
+</div>
+</div>
 {_changes_html(load_history())}
-</div>
-<div class="g-side">
 {_priority_list(ranked)}
-</div>
-</div>
 </section>
 
 <section id="pane-cards" hidden>

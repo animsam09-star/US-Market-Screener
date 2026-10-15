@@ -812,10 +812,24 @@ def f47_dashboard_tabs_and_honesty():
         check("F47 전적: 예외 명시", "예외: 2021-12 정유가" in line, line[:200])
         check("F47 전적: 조건부 '~에 불과'", "에 불과합니다" in line, line[-120:])
 
-        hon = db._honesty_html()
-        check("F47 고지: 승률 표", "85%" in hon and "판정은 예측이 아니라" in hon)
-        check("F47 고지: 놓친 전력", "놓친 전력" in hon and "+114%p" in hon
-              or "놓친 전력" in hon, "")
+        # 고지 배너는 폐지("이건 그냥 없애") — 대신 카드마다 판단 문단:
+        # "정유가 계속 좋을 거 같은데 아닌가?"에 대한 도구의 답.
+        db.VERDICT_STATS["이미 반영"] = {"n": 85, "mean": 17.3, "median": 1.1,
+                                         "hit": 54.0}
+        db.BT_RECORDS = db.BT_RECORDS + [
+            {"verdict": "이미 반영", "theme": f"y{i}", "date": "2022-06-30",
+             "axes": {"A7": 80.0}, "fwd12": (-5.0 if i < 5 else 30.0)}
+            for i in range(7)]
+        r2 = ThemeResult(name="정유류", thesis="", tickers=["B"])
+        r2.catalyst = [Signal("A7", "⑦ 마진", 70, "ok", "d")]
+        r2.unpriced = [Signal("U3", "주가", 10, "ok", "d", raw=140.0)]
+        ans = db._theme_answer(r2, "이미 반영")
+        check("F47 답변: 지금 판단 문단", "지금 판단" in ans, ans[:80])
+        check("F47 답변: 뒤집히는 축 경고", "뒤집혀" in ans, "")
+        check("F47 답변: 가격 선반영", "140%p 앞서" in ans, "")
+        check("F47 답변: 조건부 승률+모멘텀 결론",
+              "모멘텀" in ans and "엣지 밖" in ans, ans[-140:])
+        check("F47 추천 섹터 0개 안내", "연평균 2번꼴" in db._sector_picks([]))
     finally:
         db.VERDICT_STATS, db.BT_RECORDS = old_vs, old_bt
 
