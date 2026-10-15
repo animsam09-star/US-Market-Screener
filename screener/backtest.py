@@ -420,6 +420,21 @@ def analyze(result: dict) -> dict:
     # 양반기 기준보다 나빴다(후반 큰 승자를 강등하고 큰 패자를 유지).
     dates = sorted(r["date"] for r in records if r.get("fwd12") is not None)
     mid = dates[len(dates) // 2] if dates else ""
+
+    # 게이트가 실제로 하는 일의 성과: '촉매 강함+가격 미반영'(판정 문자열이
+    # 아니라 점수 문턱으로 — 게이트 자신과 순환하지 않게) 상태에서 그 축이
+    # 최상위 촉매였을 때 이후 12M. 테마를 16→30개로 넓히자 ②공급의
+    # 무조건부 IC 가 +0.29→+0.06 으로 희석됐는데(주도 촉매가 아닌 테마들의
+    # 측정값이 상관을 깎음) 조건부 성과는 86%(n=7)로 최상이었다 — 무조건부
+    # IC 하나로 안정 축을 뽑으면 정확히 거꾸로 고른다.
+    def _top1(r):
+        ax = r.get("axes") or {}
+        return max(ax.items(), key=lambda kv: kv[1])[0] if ax else None
+
+    sc_recs = [r for r in records
+               if (r.get("catalyst") or 0) >= 40 and (r.get("unpriced") or 0) >= 50
+               and not r.get("rebound") and r.get("fwd12") is not None]
+
     axis_ic: dict = {}
     for group_key, sub in (("axes", "A"), ("uaxes", "U")):
         keys = sorted({k for r in records for k in r[group_key]})
@@ -435,9 +450,19 @@ def analyze(result: dict) -> dict:
                      if k in r[group_key] and r.get("fwd12") is not None
                      and r["date"] > mid]
                 d["ic_early"], d["ic_late"] = spearman(e), spearman(l)
-                d["stable"] = bool(
-                    (d["ic"] or 0) > 0.15
-                    and (d["ic_early"] or 0) > 0 and (d["ic_late"] or 0) > 0)
+                cond = [r["fwd12"] for r in sc_recs if _top1(r) == k]
+                d["cond_n"] = len(cond)
+                d["cond_hit"] = (100.0 * sum(1 for x in cond if x > 0) / len(cond)
+                                 ) if cond else None
+                d["cond_mean"] = (sum(cond) / len(cond)) if cond else None
+                # 안정 축 = ①레짐 강건(전·후반 IC 모두 양수, 타협 없는 필수
+                # 조건) + ②쓸모 입증(무조건부 IC > 0.10 이거나, 주도 촉매로
+                # 쓰였을 때 승률 65%+·n≥5). ②의 두 갈래는 희석 문제의 대응:
+                # 넓은 우주에서는 조건부 증거가 본질이고 IC 는 보조다.
+                robust = (d["ic_early"] or 0) > 0 and (d["ic_late"] or 0) > 0
+                useful = ((d["ic"] or 0) > 0.10
+                          or (len(cond) >= 5 and (d["cond_hit"] or 0) >= 65))
+                d["stable"] = bool(robust and useful)
             axis_ic[k] = d
 
     by_rebound = {("되돌림" if k else "일반"): _stats(v)
@@ -659,6 +684,11 @@ def main() -> int:
     (ROOT / "reports" / "axis_ic.json").write_text(
         json.dumps({k: v for k, v in ana["axis_ic"].items()},
                    ensure_ascii=False, indent=1), encoding="utf-8")
+    # 판정별 과거 성적 — 대시보드가 판정 그룹 머리와 정직 고지에 붙인다
+    # ("이 승률들도 써주고"). 판정은 확률 진술이라는 걸 숫자로 보여주는 장치.
+    (ROOT / "reports" / "verdict_stats.json").write_text(
+        json.dumps(ana["by_verdict"], ensure_ascii=False, indent=1),
+        encoding="utf-8")
     print(f"\n완료 — 관측 {ana['n_records']}건")
     print(f"  백테스트_결과.md / reports/backtest.html / reports/backtest_records.json")
     for tag in VORDER:

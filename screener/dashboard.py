@@ -291,6 +291,7 @@ def _card(r: ThemeResult, rank: int) -> str:
      <em>· SEC 재무 {sp.get('n_companies', 0)}개사{cust_txt} · 살아있는 축 {r.coverage:.0f}%
      · 기각 {r.n_rejected}개</em></p>
   <p class="verdict-line"><span class="vd {vcls}">{_e(vtag)}</span>{_e(vtext)}</p>
+  {_history_line(r, vtag)}
   {inc_line}
   <details class="detail">
     <summary>근거 자세히 — 축별 판정과 원본 링크</summary>
@@ -343,6 +344,136 @@ def _stable_axes() -> set:
 
 
 STABLE_AXES = _stable_axes()
+
+
+def _load_report_json(name: str):
+    p = Path(__file__).resolve().parent.parent / "reports" / name
+    try:
+        return json.loads(p.read_text(encoding="utf-8"))
+    except Exception:
+        return None
+
+
+# 판정별 백테스트 성적(n·평균·중앙·승률)과 관측 원장. 판정은 예측이 아니라
+# 확률 진술이다 — 그 확률을 화면에 숫자로 보여준다("이 승률들도 써주고").
+VERDICT_STATS: dict = _load_report_json("verdict_stats.json") or {}
+BT_RECORDS: list = _load_report_json("backtest_records.json") or []
+_POSITIVE_TAGS = ("볼 만함", "지켜볼 만")
+_LOW_TAGS = ("이유 약함", "지금은 아님", "판정 불가", "되돌림")
+
+
+def _rec_top1(rec: dict) -> str | None:
+    ax = rec.get("axes") or {}
+    return max(ax.items(), key=lambda kv: kv[1])[0] if ax else None
+
+
+def _bt_stats(rs: list) -> dict | None:
+    v = [x["fwd12"] for x in rs if x.get("fwd12") is not None]
+    if not v:
+        return None
+    return {"n": len(v), "mean": sum(v) / len(v),
+            "hit": 100.0 * sum(1 for y in v if y > 0) / len(v)}
+
+
+def _vstat_span(tag: str) -> str:
+    s = VERDICT_STATS.get(tag)
+    if not s:
+        return ""
+    return (f'<span class="prio-stat">과거 {s["n"]}번 · 12M 평균 {s["mean"]:+.1f}%p '
+            f'· 승률 {s["hit"]:.0f}%</span>')
+
+
+def _history_line(r: ThemeResult, tag: str) -> str:
+    """판정 밑의 전적 문장: 승률 → 예외는 언제였나 → 지금 조건이면 승률은 얼마.
+
+    일반 면책이 아니라 조건부 통계다("승률을 말해주면서 예외는 언제였다,
+    그러나 이럴 경우 승률은 ~에 불과하다"). 예외는 이 테마 자신의 전력을
+    우선하고(정유가 2021~22 랠리를 '이유 약함'으로 놓친 류), 없으면 전체에서.
+    """
+    base = VERDICT_STATS.get(tag)
+    recs = [x for x in BT_RECORDS if x.get("verdict") == tag]
+    if not base or not recs:
+        return ""
+    pos = tag in _POSITIVE_TAGS
+    parts = [f"과거 같은 판정 {base['n']}번 — 12개월 평균 {base['mean']:+.1f}%p, "
+             f"승률 {base['hit']:.0f}%."]
+
+    # 예외: 판정과 반대로 간 가장 큰 사례. 이 테마 자신의 것이 있으면 그걸로.
+    def _worst(rs):
+        rs = [x for x in rs if x.get("fwd12") is not None]
+        if not rs:
+            return None
+        return min(rs, key=lambda x: x["fwd12"]) if pos \
+            else max(rs, key=lambda x: x["fwd12"])
+
+    own = _worst([x for x in recs if x.get("theme") == r.name])
+    ex = own if own and ((pos and own["fwd12"] < 0) or (not pos and own["fwd12"] > 20)) \
+        else _worst(recs)
+    if ex and ((pos and ex["fwd12"] < 0) or (not pos and ex["fwd12"] > 20)):
+        who = "이 테마가" if ex.get("theme") == r.name else f"{ex['theme']}가"
+        direction = "하락" if pos else "랠리"
+        parts.append(f"예외: {ex['date'][:7]} {who} 같은 판정에서 "
+                     f"{ex['fwd12']:+.1f}%p {direction}.")
+
+    # 지금 조건(주도 촉매 축의 안정성)으로 좁힌 조건부 승률.
+    # 볼 만함·지켜볼 만은 정의 자체가 그 조건이라 중복 서술하지 않는다.
+    if not pos and r.top_axes:
+        stable = r.top_axes[0].key in STABLE_AXES
+        sub = [x for x in recs if (_rec_top1(x) in STABLE_AXES) == stable]
+        s = _bt_stats(sub)
+        if s and s["n"] >= 5 and abs(s["hit"] - base["hit"]) >= 7:
+            cond = ("낙수·공급·병목처럼 예측력이 검증된 축" if stable
+                    else "시기 따라 예측력이 뒤집히는 축")
+            tail = "에 불과합니다" if s["hit"] < base["hit"] else "로 올라갑니다"
+            parts.append(f"그러나 지금처럼 주도 촉매가 {cond}인 경우로 좁히면 "
+                         f"승률은 {s['hit']:.0f}%({s['n']}번, 평균 "
+                         f"{s['mean']:+.1f}%p){tail}.")
+    return '<p class="track">' + _e(" ".join(parts)) + "</p>"
+
+
+def _honesty_html() -> str:
+    """'한눈에' 맨 위 정직 고지 — 판정별 실측 승률 표 + 도구가 틀렸던 전력.
+
+    사용자 지정: 한계 고지는 채팅이 아니라 눈에 잘 보이는 곳에 상설로.
+    """
+    if not VERDICT_STATS:
+        return ""
+    order = ["볼 만함", "지켜볼 만", "이미 반영", "되돌림", "이유 약함", "지금은 아님"]
+    rows = []
+    for tag in order:
+        s = VERDICT_STATS.get(tag)
+        if not s:
+            continue
+        rows.append(f"<tr><th scope='row'>{_e(tag)}</th><td class='num'>{s['n']}</td>"
+                    f"<td class='num'>{s['mean']:+.1f}%p</td>"
+                    f"<td class='num'>{s['median']:+.1f}%p</td>"
+                    f"<td class='num'>{s['hit']:.0f}%</td></tr>")
+    # 도구가 놓친 전력 — 낮은 판정이었는데 크게 오른 상위 사례
+    misses = sorted((x for x in BT_RECORDS
+                     if x.get("verdict") in _LOW_TAGS
+                     and x.get("fwd12") is not None and x["fwd12"] > 40),
+                    key=lambda x: -x["fwd12"])[:3]
+    miss_txt = " · ".join(
+        f"{m['date'][:7]} {m['theme']} '{m['verdict']}' → {m['fwd12']:+.0f}%p"
+        for m in misses)
+    vb = VERDICT_STATS.get("볼 만함") or {}
+    return f"""
+<div class="honesty">
+<h2>이 도구를 읽는 법 — 판정은 예측이 아니라 확률이다</h2>
+<div class="hon-cols">
+<table class="summary hon-t"><thead><tr><th>판정</th><th>n</th><th>평균</th>
+<th>중앙값</th><th>승률</th></tr></thead><tbody>{''.join(rows)}</tbody></table>
+<ul class="hon-l">
+<li>'볼 만함' 승률 {vb.get('hit', 0):.0f}%는 과거 {vb.get('n', 0)}번의 통계다 —
+보장이 아니고, 표본도 작다.</li>
+<li>낮은 판정은 "떨어진다"가 아니라 <strong>"여기서부터는 확률이 당신 편이
+아니다"</strong>라는 뜻이다. '이미 반영'도 평균은 올랐다.</li>
+<li><strong>놓친 전력:</strong> {_e(miss_txt) if miss_txt else '없음'} —
+촉매 측정이 실제보다 2~3개월 늦는 테마의 랠리를 이 도구는 놓친다.</li>
+<li>각 테마 카드의 '과거 같은 판정 …' 줄이 그 판정의 전적·예외·지금 조건의
+조건부 승률이다.</li>
+</ul>
+</div></div>"""
 
 
 def priority(r: ThemeResult) -> tuple[int, float]:
@@ -734,7 +865,8 @@ def _priority_list(ranked: list[ThemeResult]) -> str:
         }.get(tag, "")
         out.append(f'<div class="prio-g"><div class="prio-t">'
                    f'<span class="vd {cls}">{_e(tag)}</span>'
-                   f'<span class="prio-n">{_e(note)}</span></div><ol class="prio-l">')
+                   f'<span class="prio-n">{_e(note)}</span>'
+                   f'{_vstat_span(tag)}</div><ol class="prio-l">')
         for r, _c, text in items:
             n += 1
             cs = "—" if r.catalyst_score is None else f"{r.catalyst_score:.0f}"
@@ -768,6 +900,28 @@ CSS = """
 --text-secondary:#52514e;--muted:#898781;--grid:#e1e0d9;--axis:#c3c2b7;
 --border:rgba(11,11,11,.10);--series-1:#2a78d6;--series-2:#eb6834;--series-3:#1baf7a;
 --good:#0ca30c;--warning:#fab219;--critical:#d03b3b;--seq-200:#9ec5f4;--seq-450:#2a78d6}
+[hidden]{display:none!important}
+.tabbar{position:sticky;top:0;z-index:30;display:flex;gap:6px;padding:10px 0 8px;
+ background:var(--surface-1);border-bottom:1px solid var(--border);margin:14px 0 18px}
+.tabbtn{font:inherit;font-weight:700;font-size:14.5px;padding:8px 16px;border-radius:9px;
+ border:1px solid var(--border);background:var(--plane);color:var(--text-secondary);cursor:pointer}
+.tabbtn.on{background:var(--seq-450);border-color:var(--seq-450);color:#fff}
+.tabbtn.tablink{margin-left:auto;text-decoration:none;color:var(--text-secondary)}
+.chiprow{display:flex;flex-wrap:wrap;gap:6px;margin:4px 0 16px}
+.chip{font-size:12.5px;padding:4px 10px;border-radius:999px;border:1px solid var(--border);
+ background:var(--plane);color:var(--text-primary);text-decoration:none}
+.chip.v-good{border-color:var(--good)}.chip.v-bad{border-color:var(--critical)}
+.card.flash{outline:3px solid var(--seq-450);transition:outline .2s}
+.track{margin:2px 0 8px;font-size:13px;line-height:1.55;color:var(--text-secondary);
+ border-left:3px solid var(--axis);padding-left:10px}
+.prio-stat{margin-left:auto;font-size:12.5px;color:var(--text-secondary);white-space:nowrap}
+.honesty{border:1px solid var(--border);border-left:4px solid var(--seq-450);
+ border-radius:10px;padding:14px 18px;margin:6px 0 20px;background:var(--plane)}
+.honesty h2{margin:0 0 10px;font-size:17px}
+.hon-cols{display:flex;gap:22px;flex-wrap:wrap;align-items:flex-start}
+.hon-t{flex:0 0 330px;font-size:13px}
+.hon-l{flex:1;min-width:280px;margin:0;padding-left:18px;font-size:13.5px;line-height:1.65}
+.hon-l li{margin-bottom:6px}
 @media (prefers-color-scheme:dark){:root:where(:not([data-theme="light"])) .viz-root{
 color-scheme:dark;--surface-1:#1a1a19;--plane:#0d0d0d;--text-primary:#fff;
 --text-secondary:#c3c2b7;--muted:#898781;--grid:#2c2c2a;--axis:#383835;
@@ -971,6 +1125,52 @@ padding:6px 11px;cursor:pointer;font:inherit;font-size:12px}
 """
 
 
+# 탭 전환 스크립트 — 외부 의존 없음. 한 페이지 스크롤이 30개 테마에서
+# 읽기 불가능해져("스크롤로 내려가면서 보기 불편") 화면을 셋으로 나눈다.
+# f-string 밖 상수로 둔다: JS 중괄호를 f-string 이 삼키는 사고 방지.
+TAB_JS = """
+(function(){
+  var panes=['pane-glance','pane-cards','pane-table'];
+  function show(id){
+    panes.forEach(function(p){
+      var el=document.getElementById(p);
+      if(el) el.hidden=(p!==id);
+    });
+    document.querySelectorAll('.tabbtn[data-pane]').forEach(function(b){
+      b.classList.toggle('on', b.dataset.pane===id);
+    });
+  }
+  document.querySelectorAll('.tabbtn[data-pane]').forEach(function(b){
+    b.addEventListener('click', function(){ show(b.dataset.pane); window.scrollTo(0,0); });
+  });
+  // '무엇부터 볼까'·칩의 #tN 링크 → 상세 탭으로 전환 후 그 카드로 이동
+  document.addEventListener('click', function(e){
+    var a=e.target.closest&&e.target.closest('a[href^="#t"]');
+    if(!a) return;
+    var id=a.getAttribute('href').slice(1);
+    if(!/^t\\d+$/.test(id)) return;
+    e.preventDefault();
+    show('pane-cards');
+    var el=document.getElementById(id);
+    if(el){
+      el.scrollIntoView({block:'start'});
+      el.classList.remove('flash'); void el.offsetWidth; el.classList.add('flash');
+    }
+  });
+  show('pane-glance');
+})();
+"""
+
+
+def _theme_chips(ranked: list[ThemeResult]) -> str:
+    """상세 탭 머리의 테마 점프 칩 — 30개를 스크롤로 찾지 않게."""
+    chips = []
+    for i, r in enumerate(ranked, 1):
+        tag, cls, _t = _verdict(r)
+        chips.append(f'<a class="chip {cls}" href="#t{i}" title="{_e(tag)}">{_e(r.name)}</a>')
+    return '<div class="chiprow">' + "".join(chips) + "</div>"
+
+
 def build_html(results: list[ThemeResult], *, benchmark: str = "SPY") -> str:
     ranked = sorted(results, key=priority)
     now = datetime.now().strftime("%Y-%m-%d %H:%M")
@@ -1035,23 +1235,37 @@ r.dataset.theme=r.dataset.theme==='dark'?'light':'dark'">라이트/다크</butto
 <a href="backtest.html">백테스트 검증 결과</a></p>
 
 {warn}
+
+<nav class="tabbar">
+<button class="tabbtn on" data-pane="pane-glance">한눈에</button>
+<button class="tabbtn" data-pane="pane-cards">테마 상세</button>
+<button class="tabbtn" data-pane="pane-table">전체 표</button>
+<a class="tabbtn tablink" href="backtest.html">백테스트 ↗</a>
+</nav>
+
+<section id="pane-glance">
+{_honesty_html()}
 {_top_picks(ranked)}
 {_changes_html(load_history())}
 {_priority_list(ranked)}
+<h2>사분면 — 촉매 대비 미반영</h2>
+<div class="panel">{_scatter(ranked)}</div>
+</section>
 
+<section id="pane-cards" hidden>
+{_theme_chips(ranked)}
+{cards}
+</section>
+
+<section id="pane-table" hidden>
 <p class="rankrule">정렬 기준: <code>√(촉매 × 미반영) × 신뢰도 × 게이트</code>
  — <strong>기하평균이라 한쪽이 0이면 총점도 0</strong>이다. 촉매가 죽은 테마는 아무리
  눌려 있어도 후보가 아니다(싼 데는 이유가 있을 수 있다). 신뢰도는 살아있는 촉매 축의
  비율로, 축 3개로 낸 점수와 축 9개로 낸 점수를 같은 저울에 올리지 않기 위한 할인이다.</p>
-
-<h2>사분면 — 촉매 대비 미반영</h2>
-<div class="panel">{_scatter(ranked)}</div>
-
-<h2>테마별 상세</h2>
-{cards}
-
-<h2>전체 표</h2>
 <div class="panel">{_summary_table(ranked)}</div>
+</section>
+
+<script>{TAB_JS}</script>
 
 <div class="foot">
 <p><strong>읽는 법.</strong> 촉매 점수는 9개 축(낙수·공급여력·신기술·설비노후·정책·캐펙스·스프레드·재고·병목)의

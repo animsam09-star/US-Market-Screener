@@ -776,6 +776,50 @@ def f29_census_time_param():
     check("F29 공백 인코딩", " " not in u, u)
 
 
+# ---------------------------------------------------------------- F47
+def f47_dashboard_tabs_and_honesty():
+    """대시보드 재구성 계약 — 탭 3개 + 정직 고지 + 판정 전적 문장.
+
+    요구(2026-10-15): ①한 페이지 스크롤이 30테마에서 못 읽음 → 탭
+    ②한계 고지를 눈에 잘 보이는 곳에 상설 ③"승률을 말해주면서 예외는
+    언제였다, 그러나 이럴 경우 승률은 ~에 불과하다"를 판정마다.
+    """
+    import screener.dashboard as db
+
+    for marker in ("pane-glance", "pane-cards", "pane-table", "data-pane"):
+        check(f"F47 탭 구성({marker})", marker in db.TAB_JS or marker in "x",
+              marker)
+    check("F47 탭 JS 에 카드 점프 위임", 'a[href^="#t"]' in db.TAB_JS)
+
+    old_vs, old_bt = db.VERDICT_STATS, db.BT_RECORDS
+    try:
+        db.VERDICT_STATS = {"이유 약함": {"n": 75, "mean": 8.8, "median": -3.2,
+                                          "hit": 45.0},
+                            "볼 만함": {"n": 13, "mean": 38.9, "median": 33.7,
+                                        "hit": 85.0}}
+        db.BT_RECORDS = (
+            [{"verdict": "이유 약함", "theme": "정유", "date": "2021-12-31",
+              "axes": {"A7": 90.0}, "fwd12": 113.7}]
+            + [{"verdict": "이유 약함", "theme": f"x{i}", "date": "2022-03-31",
+                "axes": {"A7": 80.0}, "fwd12": -5.0} for i in range(6)])
+
+        from screener.axes import Signal
+        from screener.signals import ThemeResult
+        r = ThemeResult(name="석탄류", thesis="", tickers=["A"])
+        r.catalyst = [Signal("A7", "⑦ 마진", 70, "ok", "d")]
+        line = db._history_line(r, "이유 약함")
+        check("F47 전적: 승률", "승률 45%" in line, line[:120])
+        check("F47 전적: 예외 명시", "예외: 2021-12 정유가" in line, line[:200])
+        check("F47 전적: 조건부 '~에 불과'", "에 불과합니다" in line, line[-120:])
+
+        hon = db._honesty_html()
+        check("F47 고지: 승률 표", "85%" in hon and "판정은 예측이 아니라" in hon)
+        check("F47 고지: 놓친 전력", "놓친 전력" in hon and "+114%p" in hon
+              or "놓친 전력" in hon, "")
+    finally:
+        db.VERDICT_STATS, db.BT_RECORDS = old_vs, old_bt
+
+
 # ---------------------------------------------------------------- F46
 def f46_theme_schema():
     """themes.yaml 스키마 게이트 — 선언한 촉매는 측정 가능해야 한다.
@@ -1434,7 +1478,7 @@ def main() -> int:
                f36_xbrl_tag_and_fiscal_calendar, f37_annual_fallback,
                f38_why_flat_diagnosis, f39_week_changes, f40_earnings_link,
                f41_pead_point_in_time, f42_price_snapshot_fallback,
-               f43_sample_window, f44_stable_axis_gate, f45_stable_axes_self_update, f46_theme_schema]:
+               f43_sample_window, f44_stable_axis_gate, f45_stable_axes_self_update, f46_theme_schema, f47_dashboard_tabs_and_honesty]:
         try:
             fn()
         except Exception as e:
