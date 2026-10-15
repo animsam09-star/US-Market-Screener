@@ -147,8 +147,8 @@ def _scatter(results: list[ThemeResult], nums: dict | None = None) -> str:
     if not pts:
         return '<p class="nodata">산점도를 그릴 데이터가 부족합니다.</p>'
 
-    W, H = 760, 470
-    PL, PR, PT, PB = 58, 26, 26, 52
+    W, H = 880, 560
+    PL, PR, PT, PB = 66, 30, 30, 58
     iw, ih = W - PL - PR, H - PT - PB
 
     def sx(v):
@@ -191,13 +191,13 @@ def _scatter(results: list[ThemeResult], nums: dict | None = None) -> str:
     placed: list[tuple[float, float, float, float]] = []
 
     def _label_y(x0, x1, y0):
-        for dy in (0, -14, 14, -28, 28, -42, 42, -56, 56, -70, 70, -84, 84):
+        for dy in (0, -17, 17, -34, 34, -51, 51, -68, 68, -85, 85, -102, 102):
             yy = y0 + dy
-            if all(x1 < a or x0 > b or yy < c - 12 or yy > d + 12
+            if all(x1 < a or x0 > b or yy < c - 14 or yy > d + 14
                    for a, b, c, d in placed):
-                placed.append((x0, x1, yy - 6, yy + 6))
+                placed.append((x0, x1, yy - 8, yy + 8))
                 return yy
-        placed.append((x0, x1, y0 - 6, y0 + 6))
+        placed.append((x0, x1, y0 - 8, y0 + 8))
         return y0
 
     nums = nums or {}
@@ -209,22 +209,22 @@ def _scatter(results: list[ThemeResult], nums: dict | None = None) -> str:
         x, y = sx(r.catalyst_score), sy(r.unpriced_score)
         gate = r.gate_passed
         parts.append(
-            f'<circle cx="{x:.1f}" cy="{y:.1f}" r="{7 if gate >= 2 else 5.5}" '
+            f'<circle cx="{x:.1f}" cy="{y:.1f}" r="{8 if gate >= 2 else 6}" '
             f'fill="{BUCKETS[b][2]}" class="pt{" gated" if gate >= 2 else ""}'
             f'{" pick" if _verdict(r)[0] in _POSITIVE_TAGS else ""}">'
             f'<title>{_e(r.name)} — 촉매 {r.catalyst_score:.0f} / 미반영 '
             f'{r.unpriced_score:.0f} / 게이트 {gate}개 통과</title></circle>')
         if r.name in nums:
-            parts.append(f'<circle cx="{x + 11:.1f}" cy="{y - 10:.1f}" r="8.5" '
+            parts.append(f'<circle cx="{x + 11:.1f}" cy="{y - 12:.1f}" r="10" '
                          f'class="pickbadge"/>'
-                         f'<text x="{x + 11:.1f}" y="{y - 6.4:.1f}" '
+                         f'<text x="{x + 11:.1f}" y="{y - 7.6:.1f}" '
                          f'class="pickbadge-n" text-anchor="middle">'
                          f'{nums[r.name]}</text>')
         if not _labeled(r):
             continue
         anchor = "end" if x > PL + iw * 0.72 else "start"
-        dx = -11 if anchor == "end" else 11
-        w = 13.5 * len(r.name) + 6
+        dx = -12 if anchor == "end" else 12
+        w = (16.0 if r.name in nums else 14.0) * len(r.name) + 8
         x0, x1 = (x + dx - w, x + dx) if anchor == "end" else (x + dx, x + dx + w)
         ly = _label_y(x0, x1, y + 4)
         big = ' big' if r.name in nums else ''
@@ -1089,8 +1089,8 @@ CSS = """
 .nchip em{font-style:normal;color:var(--muted);margin-right:4px}
 .nchip.th{border-color:var(--seq-200)}
 .pickbadge{fill:#c9a227}
-.pickbadge-n{fill:#fff;font-size:11px;font-weight:800}
-.ptlab.big{font-weight:800;font-size:13px}
+.pickbadge-n{fill:#fff;font-size:12.5px;font-weight:800}
+.ptlab.big{font-weight:800;font-size:15.5px}
 .sp-list{list-style:none;margin:0;padding:0}
 .sp-list li{padding:9px 0;border-bottom:1px solid var(--border)}
 .sp-list a{text-decoration:none;color:var(--text-primary);font-size:15px;margin-right:8px}
@@ -1098,8 +1098,8 @@ CSS = """
 .sp-co{display:inline-block;margin-left:8px;font-size:12.5px;color:var(--text-secondary)}
 .sp-why{display:block;margin-top:3px;font-size:12.5px;line-height:1.5;color:var(--text-secondary)}
 @media (min-width:1400px){
- .wrap{max-width:min(96vw,2900px)}
- .hero{display:grid;grid-template-columns:minmax(0,1.55fr) minmax(0,1fr);
+ .viz-root .wrap{max-width:min(96vw,2900px)}
+ .hero{display:grid;grid-template-columns:minmax(0,1.75fr) minmax(0,1fr);
   gap:0 36px;align-items:start}
  .hero-sc .scatter{width:100%;height:auto}
  .prio-l{columns:2;column-gap:30px}
@@ -1108,7 +1108,7 @@ CSS = """
  .cardcols .card{break-inside:avoid;margin-top:0;margin-bottom:18px}
 }
 @media (min-width:2200px){
- .hero{grid-template-columns:minmax(0,1.8fr) minmax(0,1fr)}
+ .hero{grid-template-columns:minmax(0,2fr) minmax(0,1fr)}
  .cardcols{columns:3;column-gap:30px}
  .prio-l{columns:3}
 }
@@ -1150,7 +1150,7 @@ color-scheme:dark;--surface-1:#121430;--plane:#0b0c1c;--text-primary:#f2f3ff;
 --seq-200:#28306b;--seq-450:#5a68e8;--navy:#aab4ff;--cyan:#00aeef}
 *{box-sizing:border-box}
 body{margin:0;background:var(--plane)}
-.viz-root{font:14px/1.55 system-ui,-apple-system,"Segoe UI",sans-serif;
+.viz-root{font:15px/1.6 "Pretendard Variable",Pretendard,-apple-system,"Segoe UI","Noto Sans KR","Malgun Gothic",sans-serif;font-variant-numeric:tabular-nums;
 background:var(--plane);color:var(--text-primary);padding:28px 20px 60px}
 .wrap{max-width:1180px;margin:0 auto}
 h1{font-size:23px;margin:0 0 4px;letter-spacing:-.01em}
@@ -1166,16 +1166,16 @@ padding:18px 20px;margin-top:14px}
 .grid{stroke:var(--grid);stroke-width:1}
 .mid{stroke:var(--axis);stroke-width:1;stroke-dasharray:3 3}
 .target-quad{fill:var(--seq-450);opacity:.055}
-.tick{fill:var(--muted);font-size:11px;font-variant-numeric:tabular-nums}
-.axlab{fill:var(--text-secondary);font-size:12px}
-.quadlab{fill:var(--text-secondary);font-size:11px;font-weight:600;letter-spacing:.04em}
+.tick{fill:var(--muted);font-size:12px}
+.axlab{fill:var(--text-secondary);font-size:14px;font-weight:700}
+.quadlab{fill:var(--text-secondary);font-size:13.5px;font-weight:700;letter-spacing:.03em}
 .quadlab.dim{fill:var(--muted);font-weight:400}
 .pt{stroke:var(--surface-1);stroke-width:2}
 .pt.gated{stroke-width:2.5}
-.ptlab{fill:var(--text-primary);font-size:11.5px}
+.ptlab{fill:var(--text-primary);font-size:12.5px}
 .legend{display:flex;gap:18px;flex-wrap:wrap;margin-top:10px;font-size:12px;
 color:var(--text-secondary)}
-.lg{display:inline-flex;align-items:center;gap:6px}
+.lg{display:inline-flex;align-items:center;gap:6px;font-size:13px;margin-right:16px}
 .lg i{width:10px;height:10px;border-radius:50%;display:inline-block}
 .lg em{color:var(--muted);font-style:normal}
 .card{background:var(--surface-1);border:1px solid var(--border);border-radius:12px;
