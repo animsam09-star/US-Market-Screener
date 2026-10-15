@@ -1,6 +1,6 @@
 # 고객군 자동 지정 리포트
 
-생성: 2026-10-15 00:45:40 UTC · 대상 연도: 2024
+생성: 2026-10-15 04:39:30 UTC · 대상 연도: 2024
 
 ## 1. 사용 가능한 산업연관표
 
@@ -385,6 +385,227 @@
 ### 유전서비스·시추
 
 - 산업 식별 실패: FRED 시리즈 `IPN213111N` 에서 NAICS 를 못 뽑음
+
+### 구리·금속광산
+
+공급 산업: `212` Mining, except oil and gas  (NAICS 2122 ← `IPG2122S`)
+
+| 고객 산업 | 코드 | 비중 | FRED 지표 |
+|---|---|---|---|
+| Construction | `23` | 30.7% | —  건설 — 실질 산출 지수 없음(건설지출은 명목) |
+| Nonmetallic mineral products | `327` | 15.2% | — |
+| Primary metals | `331` | 14.6% | IPG331S |
+| Mining, except oil and gas | `212` | 10.3% | —  자기 산업 — 순환이라 낙수 축에 못 씀 |
+| Utilities | `22` | 6.8% | IPUTIL |
+| Chemical products | `325` | 5.5% | IPG325S |
+| Petroleum and coal products | `324` | 2.5% | IPG324S |
+| Farms | `111CA` | 1.7% | — |
+
+자기 산업 내 거래 10.3% — 후보에서 제외했다.
+
+제안 `customers.series`: **IPG331S** (비중 14.6%, IPG335S → IPG331S)
+
+### 알루미늄
+
+공급 산업: `331` Primary metals  (NAICS 3313 ← `IPG3313S`)
+
+| 고객 산업 | 코드 | 비중 | FRED 지표 |
+|---|---|---|---|
+| Fabricated metal products | `332` | 27.4% | IPG332S |
+| Primary metals | `331` | 23.5% | —  자기 산업 — 순환이라 낙수 축에 못 씀 |
+| Motor vehicles, bodies and trailers, and parts | `3361MV` | 14.6% | IPG3361T3S |
+| Machinery | `333` | 10.7% | IPG333S |
+| Electrical equipment, appliances, and components | `335` | 7.4% | IPG335S |
+| Construction | `23` | 2.5% | —  건설 — 실질 산출 지수 없음(건설지출은 명목) |
+| Oil and gas extraction | `211` | 2.4% | IPMINE |
+| Other transportation equipment | `3364OT` | 1.8% | IPG3364T9S |
+
+자기 산업 내 거래 23.5% — 후보에서 제외했다.
+
+제안 `customers.series`: **IPG332S** (비중 27.4%, IPG336S → IPG332S)
+
+### 석탄
+
+- 산업 식별 실패: FRED 시리즈 `IPN2121S` 에서 NAICS 를 못 뽑음
+
+### 천연가스 E&P
+
+공급 산업: `211` Oil and gas extraction  (NAICS 211 ← `IPG211S`)
+
+| 고객 산업 | 코드 | 비중 | FRED 지표 |
+|---|---|---|---|
+| Petroleum and coal products | `324` | 81.6% | IPG324S |
+| Oil and gas extraction | `211` | 7.9% | —  자기 산업 — 순환이라 낙수 축에 못 씀 |
+| Utilities | `22` | 6.5% | IPUTIL |
+| Chemical products | `325` | 3.0% | IPG325S |
+| Educational services | `61` | 0.3% | — |
+| Ambulatory health care services | `621` | 0.1% | — |
+| Warehousing and storage | `493` | 0.1% | — |
+| Publishing industries, except internet (includes sof | `511` | 0.1% | — |
+
+자기 산업 내 거래 7.9% — 후보에서 제외했다.
+
+제안 `customers.series`: **IPG324S** (비중 81.6%, IPUTIL → IPG324S)
+
+### 철도
+
+- 산업 식별 실패: FRED 시리즈 `RAILFRTCARLOADSD11` 에서 NAICS 를 못 뽑음
+
+### 광네트워킹·AI 인프라
+
+공급 산업: `334` Computer and electronic products  (NAICS 3344 ← `IPG3344S`)
+
+| 고객 산업 | 코드 | 비중 | FRED 지표 |
+|---|---|---|---|
+| Wholesale trade | `42` | 17.3% | —  도매 — 산업생산 지수 없음 |
+| Computer and electronic products | `334` | 12.3% | —  자기 산업 — 순환이라 낙수 축에 못 씀 |
+| Broadcasting and telecommunications | `513` | 10.0% | —  방송·통신 — 산업생산 지수 없음 |
+| Motor vehicles, bodies and trailers, and parts | `3361MV` | 8.0% | IPG3361T3S |
+| Management of companies and enterprises | `55` | 7.3% | —  지주회사 — 산업 아님 |
+| Other transportation equipment | `3364OT` | 6.3% | IPG3364T9S |
+| Miscellaneous professional, scientific, and technica | `5412OP` | 4.3% | —  전문서비스 — 산업생산 지수 없음 |
+| Ambulatory health care services | `621` | 3.8% | — |
+
+자기 산업 내 거래 12.3% — 후보에서 제외했다.
+
+제안 없음 — 지표화 가능한 최상위 고객 `Motor vehicles, bodies and trailers, and` 이 8.0% 에 불과해 전방수요를 대표하지 못한다. 현재 값 `IPG3344S` 유지 권장.
+
+### 생명과학 도구
+
+공급 산업: `334` Computer and electronic products  (NAICS 3345 ← `IPG3345S`)
+
+| 고객 산업 | 코드 | 비중 | FRED 지표 |
+|---|---|---|---|
+| Wholesale trade | `42` | 17.3% | —  도매 — 산업생산 지수 없음 |
+| Computer and electronic products | `334` | 12.3% | —  자기 산업 — 순환이라 낙수 축에 못 씀 |
+| Broadcasting and telecommunications | `513` | 10.0% | —  방송·통신 — 산업생산 지수 없음 |
+| Motor vehicles, bodies and trailers, and parts | `3361MV` | 8.0% | IPG3361T3S |
+| Management of companies and enterprises | `55` | 7.3% | —  지주회사 — 산업 아님 |
+| Other transportation equipment | `3364OT` | 6.3% | IPG3364T9S |
+| Miscellaneous professional, scientific, and technica | `5412OP` | 4.3% | —  전문서비스 — 산업생산 지수 없음 |
+| Ambulatory health care services | `621` | 3.8% | — |
+
+자기 산업 내 거래 12.3% — 후보에서 제외했다.
+
+제안 없음 — 지표화 가능한 최상위 고객 `Motor vehicles, bodies and trailers, and` 이 8.0% 에 불과해 전방수요를 대표하지 못한다. 현재 값 `IPG3254S` 유지 권장.
+
+### 독립발전·전력판매
+
+공급 산업: `22` Utilities  (NAICS 22 ← `IPUTIL`)
+
+| 고객 산업 | 코드 | 비중 | FRED 지표 |
+|---|---|---|---|
+| Other real estate | `ORE` | 11.1% | — |
+| Utilities | `22` | 8.6% | —  자기 산업 — 순환이라 낙수 축에 못 씀 |
+| Food services and drinking places | `722` | 7.3% | — |
+| Other retail | `4A0` | 4.4% | — |
+| Wholesale trade | `42` | 4.0% | —  도매 — 산업생산 지수 없음 |
+| Construction | `23` | 3.8% | —  건설 — 실질 산출 지수 없음(건설지출은 명목) |
+| Chemical products | `325` | 3.6% | IPG325S |
+| Farms | `111CA` | 3.1% | — |
+
+자기 산업 내 거래 8.6% — 후보에서 제외했다.
+
+제안 없음 — 지표화 가능한 최상위 고객 `Chemical products` 이 3.6% 에 불과해 전방수요를 대표하지 못한다. 현재 값 `IPG3341S` 유지 권장.
+
+### 골재·시멘트
+
+공급 산업: `327` Nonmetallic mineral products  (NAICS 3273 ← `IPG3273S`)
+
+| 고객 산업 | 코드 | 비중 | FRED 지표 |
+|---|---|---|---|
+| Construction | `23` | 61.7% | —  건설 — 실질 산출 지수 없음(건설지출은 명목) |
+| Nonmetallic mineral products | `327` | 11.0% | —  자기 산업 — 순환이라 낙수 축에 못 씀 |
+| Motor vehicles, bodies and trailers, and parts | `3361MV` | 3.6% | IPG3361T3S |
+| Miscellaneous professional, scientific, and technica | `5412OP` | 2.8% | —  전문서비스 — 산업생산 지수 없음 |
+| Food and beverage and tobacco products | `311FT` | 2.0% | — |
+| Hospitals | `622` | 1.6% | — |
+| Primary metals | `331` | 1.6% | IPG331S |
+| Ambulatory health care services | `621` | 1.6% | — |
+
+자기 산업 내 거래 11.0% — 후보에서 제외했다.
+
+제안 없음 — 지표화 가능한 최상위 고객 `Motor vehicles, bodies and trailers, and` 이 3.6% 에 불과해 전방수요를 대표하지 못한다. 현재 값 `TLCOMCONS` 유지 권장.
+
+### 가스 미드스트림
+
+공급 산업: `211` Oil and gas extraction  (NAICS 211 ← `IPG211S`)
+
+| 고객 산업 | 코드 | 비중 | FRED 지표 |
+|---|---|---|---|
+| Petroleum and coal products | `324` | 81.6% | IPG324S |
+| Oil and gas extraction | `211` | 7.9% | —  자기 산업 — 순환이라 낙수 축에 못 씀 |
+| Utilities | `22` | 6.5% | IPUTIL |
+| Chemical products | `325` | 3.0% | IPG325S |
+| Educational services | `61` | 0.3% | — |
+| Ambulatory health care services | `621` | 0.1% | — |
+| Warehousing and storage | `493` | 0.1% | — |
+| Publishing industries, except internet (includes sof | `511` | 0.1% | — |
+
+자기 산업 내 거래 7.9% — 후보에서 제외했다.
+
+제안 `customers.series`: **IPG324S** (비중 81.6%, IPG211S → IPG324S)
+
+### 반도체 전공정 장비
+
+공급 산업: `334` Computer and electronic products  (NAICS 3344 ← `IPG3344S`)
+
+| 고객 산업 | 코드 | 비중 | FRED 지표 |
+|---|---|---|---|
+| Wholesale trade | `42` | 17.3% | —  도매 — 산업생산 지수 없음 |
+| Computer and electronic products | `334` | 12.3% | —  자기 산업 — 순환이라 낙수 축에 못 씀 |
+| Broadcasting and telecommunications | `513` | 10.0% | —  방송·통신 — 산업생산 지수 없음 |
+| Motor vehicles, bodies and trailers, and parts | `3361MV` | 8.0% | IPG3361T3S |
+| Management of companies and enterprises | `55` | 7.3% | —  지주회사 — 산업 아님 |
+| Other transportation equipment | `3364OT` | 6.3% | IPG3364T9S |
+| Miscellaneous professional, scientific, and technica | `5412OP` | 4.3% | —  전문서비스 — 산업생산 지수 없음 |
+| Ambulatory health care services | `621` | 3.8% | — |
+
+자기 산업 내 거래 12.3% — 후보에서 제외했다.
+
+제안 없음 — 지표화 가능한 최상위 고객 `Motor vehicles, bodies and trailers, and` 이 8.0% 에 불과해 전방수요를 대표하지 못한다. 현재 값 `IPG3344S` 유지 권장.
+
+### 공장 자동화
+
+공급 산업: `333` Machinery  (NAICS 333 ← `IPG333S`)
+
+| 고객 산업 | 코드 | 비중 | FRED 지표 |
+|---|---|---|---|
+| Construction | `23` | 25.9% | —  건설 — 실질 산출 지수 없음(건설지출은 명목) |
+| Motor vehicles, bodies and trailers, and parts | `3361MV` | 15.8% | IPG3361T3S |
+| Machinery | `333` | 15.4% | —  자기 산업 — 순환이라 낙수 축에 못 씀 |
+| Oil and gas extraction | `211` | 5.9% | IPMINE |
+| Food and beverage and tobacco products | `311FT` | 2.8% | — |
+| Administrative and support services | `561` | 2.8% | —  사업지원 서비스 — 산업생산 지수 없음 |
+| Chemical products | `325` | 2.5% | IPG325S |
+| Fabricated metal products | `332` | 2.5% | IPG332S |
+
+자기 산업 내 거래 15.4% — 후보에서 제외했다.
+
+제안 `customers.series`: **IPG3361T3S** (비중 15.8%, IPMAN → IPG3361T3S)
+
+### 농산물 가공
+
+공급 산업: `311FT` Food and beverage and tobacco products  (NAICS 311 ← `IPG311S`)
+
+| 고객 산업 | 코드 | 비중 | FRED 지표 |
+|---|---|---|---|
+| Food and beverage and tobacco products | `311FT` | 48.0% | —  자기 산업 — 순환이라 낙수 축에 못 씀 |
+| Food services and drinking places | `722` | 22.9% | — |
+| Farms | `111CA` | 11.3% | — |
+| Social assistance | `624` | 3.9% | — |
+| Chemical products | `325` | 1.7% | IPG325S |
+| Amusements, gambling, and recreation industries | `713` | 1.6% | — |
+| Hospitals | `622` | 1.6% | — |
+| Accommodation | `721` | 1.5% | — |
+
+자기 산업 내 거래 48.0% — 후보에서 제외했다.
+
+제안 없음 — 지표화 가능한 최상위 고객 `Chemical products` 이 1.7% 에 불과해 전방수요를 대표하지 못한다. 현재 값 `없음` 유지 권장.
+
+### 항공사
+
+- 산업 식별 실패: FRED 시리즈 `AIRRPMTSI` 에서 NAICS 를 못 뽑음
 
 ## 4. 이 리포트가 못 하는 것
 
