@@ -186,7 +186,21 @@ def _scatter(results: list[ThemeResult]) -> str:
     parts.append(f'<text x="{sx(2):.0f}" y="{sy(3):.0f}" class="quadlab dim" text-anchor="start">'
                  f'지금은 아님</text>')
 
-    for r in pts:
+    # 라벨 충돌 회피 — 30개 테마에서 이름표가 겹쳐 읽을 수 없던 것(실측).
+    # 이미 놓인 라벨 상자를 기억하고, 겹치면 위·아래로 한 줄씩 비켜 놓는다.
+    placed: list[tuple[float, float, float, float]] = []
+
+    def _label_y(x0, x1, y0):
+        for dy in (0, -14, 14, -28, 28, -42, 42, -56, 56, -70, 70, -84, 84):
+            yy = y0 + dy
+            if all(x1 < a or x0 > b or yy < c - 12 or yy > d + 12
+                   for a, b, c, d in placed):
+                placed.append((x0, x1, yy - 6, yy + 6))
+                return yy
+        placed.append((x0, x1, y0 - 6, y0 + 6))
+        return y0
+
+    for r in sorted(pts, key=lambda r: -(r.unpriced_score or 0)):
         b = bucket_of(r.lead_time)
         x, y = sx(r.catalyst_score), sy(r.unpriced_score)
         gate = r.gate_passed
@@ -197,7 +211,10 @@ def _scatter(results: list[ThemeResult]) -> str:
             f'{r.unpriced_score:.0f} / 게이트 {gate}개 통과</title></circle>')
         anchor = "end" if x > PL + iw * 0.72 else "start"
         dx = -11 if anchor == "end" else 11
-        parts.append(f'<text x="{x + dx:.1f}" y="{y + 4:.1f}" class="ptlab" '
+        w = 13.5 * len(r.name) + 6
+        x0, x1 = (x + dx - w, x + dx) if anchor == "end" else (x + dx, x + dx + w)
+        ly = _label_y(x0, x1, y + 4)
+        parts.append(f'<text x="{x + dx:.1f}" y="{ly:.1f}" class="ptlab" '
                      f'text-anchor="{anchor}">{_e(r.name)}</text>')
 
     parts.append("</svg>")
@@ -902,6 +919,15 @@ CSS = """
 --good:#0e9e54;--warning:#e8a714;--critical:#d03b3b;--seq-200:#b9c2f0;--seq-450:#2d2c92;
 --navy:#1a1a58;--cyan:#00aeef}
 [hidden]{display:none!important}
+@media (min-width:1500px){
+ .wrap{max-width:1800px}
+ .glance-grid{display:grid;grid-template-columns:minmax(0,1.12fr) minmax(0,1fr);
+  gap:0 32px;align-items:start}
+ .glance-grid .prio{margin-top:0}
+ .honesty .hon-t{flex:0 0 380px}
+ .cardcols{columns:2;column-gap:28px}
+ .cardcols .card{break-inside:avoid;margin-top:0;margin-bottom:18px}
+}
 .tabbar{position:sticky;top:0;z-index:30;display:flex;gap:6px;padding:10px 0 8px;
  background:var(--surface-1);border-bottom:1px solid var(--border);margin:14px 0 18px}
 .tabbtn{font:inherit;font-weight:700;font-size:14.5px;padding:8px 16px;border-radius:9px;
@@ -910,7 +936,10 @@ CSS = """
  border-color:var(--seq-450);color:#fff}
 .viz-root h1,.viz-root h2{color:var(--navy)}
 .tabbtn.tablink{margin-left:auto;text-decoration:none;color:var(--text-secondary)}
-.chiprow{display:flex;flex-wrap:wrap;gap:6px;margin:4px 0 16px}
+.chiprow{display:flex;flex-wrap:wrap;gap:6px;margin:0 0 14px;
+ position:sticky;top:50px;z-index:25;background:var(--surface-1);
+ padding:9px 0 10px;border-bottom:1px solid var(--border)}
+.card{scroll-margin-top:128px}
 .chip{font-size:12.5px;padding:4px 10px;border-radius:999px;border:1px solid var(--border);
  background:var(--plane);color:var(--text-primary);text-decoration:none}
 .chip.v-good{border-color:var(--good)}.chip.v-bad{border-color:var(--critical)}
@@ -1248,16 +1277,24 @@ r.dataset.theme=r.dataset.theme==='dark'?'light':'dark'">라이트/다크</butto
 
 <section id="pane-glance">
 {_honesty_html()}
-{_top_picks(ranked)}
-{_changes_html(load_history())}
-{_priority_list(ranked)}
+<div class="glance-grid">
+<div class="g-main">
 <h2>사분면 — 촉매 대비 미반영</h2>
 <div class="panel">{_scatter(ranked)}</div>
+{_top_picks(ranked)}
+{_changes_html(load_history())}
+</div>
+<div class="g-side">
+{_priority_list(ranked)}
+</div>
+</div>
 </section>
 
 <section id="pane-cards" hidden>
 {_theme_chips(ranked)}
+<div class="cardcols">
 {cards}
+</div>
 </section>
 
 <section id="pane-table" hidden>
