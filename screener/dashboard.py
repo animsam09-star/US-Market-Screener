@@ -896,16 +896,19 @@ def _summary_table(results: list[ThemeResult]) -> str:
 
 
 CSS = """
-.viz-root{color-scheme:light;--surface-1:#fcfcfb;--plane:#f9f9f7;--text-primary:#0b0b0b;
---text-secondary:#52514e;--muted:#898781;--grid:#e1e0d9;--axis:#c3c2b7;
---border:rgba(11,11,11,.10);--series-1:#2a78d6;--series-2:#eb6834;--series-3:#1baf7a;
---good:#0ca30c;--warning:#fab219;--critical:#d03b3b;--seq-200:#9ec5f4;--seq-450:#2a78d6}
+.viz-root{color-scheme:light;--surface-1:#fbfbfd;--plane:#f3f4fa;--text-primary:#12132e;
+--text-secondary:#45476a;--muted:#8a8ca6;--grid:#e3e4ef;--axis:#c6c8db;
+--border:rgba(26,26,88,.13);--series-1:#2d2c92;--series-2:#00aeef;--series-3:#1baf7a;
+--good:#0e9e54;--warning:#e8a714;--critical:#d03b3b;--seq-200:#b9c2f0;--seq-450:#2d2c92;
+--navy:#1a1a58;--cyan:#00aeef}
 [hidden]{display:none!important}
 .tabbar{position:sticky;top:0;z-index:30;display:flex;gap:6px;padding:10px 0 8px;
  background:var(--surface-1);border-bottom:1px solid var(--border);margin:14px 0 18px}
 .tabbtn{font:inherit;font-weight:700;font-size:14.5px;padding:8px 16px;border-radius:9px;
  border:1px solid var(--border);background:var(--plane);color:var(--text-secondary);cursor:pointer}
-.tabbtn.on{background:var(--seq-450);border-color:var(--seq-450);color:#fff}
+.tabbtn.on{background:linear-gradient(135deg,#1a1a58,#2d2c92);
+ border-color:var(--seq-450);color:#fff}
+.viz-root h1,.viz-root h2{color:var(--navy)}
 .tabbtn.tablink{margin-left:auto;text-decoration:none;color:var(--text-secondary)}
 .chiprow{display:flex;flex-wrap:wrap;gap:6px;margin:4px 0 16px}
 .chip{font-size:12.5px;padding:4px 10px;border-radius:999px;border:1px solid var(--border);
@@ -913,9 +916,9 @@ CSS = """
 .chip.v-good{border-color:var(--good)}.chip.v-bad{border-color:var(--critical)}
 .card.flash{outline:3px solid var(--seq-450);transition:outline .2s}
 .track{margin:2px 0 8px;font-size:13px;line-height:1.55;color:var(--text-secondary);
- border-left:3px solid var(--axis);padding-left:10px}
+ border-left:3px solid var(--cyan);padding-left:10px}
 .prio-stat{margin-left:auto;font-size:12.5px;color:var(--text-secondary);white-space:nowrap}
-.honesty{border:1px solid var(--border);border-left:4px solid var(--seq-450);
+.honesty{border:1px solid var(--border);border-left:4px solid var(--cyan);
  border-radius:10px;padding:14px 18px;margin:6px 0 20px;background:var(--plane)}
 .honesty h2{margin:0 0 10px;font-size:17px}
 .hon-cols{display:flex;gap:22px;flex-wrap:wrap;align-items:flex-start}
@@ -923,14 +926,14 @@ CSS = """
 .hon-l{flex:1;min-width:280px;margin:0;padding-left:18px;font-size:13.5px;line-height:1.65}
 .hon-l li{margin-bottom:6px}
 @media (prefers-color-scheme:dark){:root:where(:not([data-theme="light"])) .viz-root{
-color-scheme:dark;--surface-1:#1a1a19;--plane:#0d0d0d;--text-primary:#fff;
---text-secondary:#c3c2b7;--muted:#898781;--grid:#2c2c2a;--axis:#383835;
---border:rgba(255,255,255,.10);--series-1:#3987e5;--series-2:#d95926;--series-3:#199e70;
---seq-200:#184f95;--seq-450:#3987e5}}
-:root[data-theme="dark"] .viz-root{color-scheme:dark;--surface-1:#1a1a19;--plane:#0d0d0d;
---text-primary:#fff;--text-secondary:#c3c2b7;--muted:#898781;--grid:#2c2c2a;--axis:#383835;
---border:rgba(255,255,255,.10);--series-1:#3987e5;--series-2:#d95926;--series-3:#199e70;
---seq-200:#184f95;--seq-450:#3987e5}
+color-scheme:dark;--surface-1:#121430;--plane:#0b0c1c;--text-primary:#f2f3ff;
+--text-secondary:#b9bcd8;--muted:#7e81a3;--grid:#23264a;--axis:#333863;
+--border:rgba(255,255,255,.12);--series-1:#6f7df0;--series-2:#00aeef;--series-3:#2bbf8a;
+--seq-200:#28306b;--seq-450:#5a68e8;--navy:#aab4ff;--cyan:#00aeef}}
+:root[data-theme="dark"] .viz-root{color-scheme:dark;--surface-1:#121430;--plane:#0b0c1c;
+--text-primary:#f2f3ff;--text-secondary:#b9bcd8;--muted:#7e81a3;--grid:#23264a;--axis:#333863;
+--border:rgba(255,255,255,.12);--series-1:#6f7df0;--series-2:#00aeef;--series-3:#2bbf8a;
+--seq-200:#28306b;--seq-450:#5a68e8;--navy:#aab4ff;--cyan:#00aeef}
 *{box-sizing:border-box}
 body{margin:0;background:var(--plane)}
 .viz-root{font:14px/1.55 system-ui,-apple-system,"Segoe UI",sans-serif;
