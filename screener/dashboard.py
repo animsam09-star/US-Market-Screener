@@ -920,13 +920,28 @@ CSS = """
 --navy:#1a1a58;--cyan:#00aeef}
 [hidden]{display:none!important}
 @media (min-width:1500px){
- .wrap{max-width:1800px}
+ .wrap{max-width:min(97vw,3200px)}
+ /* 좌우 배치는 높이를 맞추고(뷰포트 기준) 각 열이 따로 스크롤된다 —
+    페이지 전체를 내리는 대신 창 안에서 내리는 대시보드 방식(사용자 지정) */
  .glance-grid{display:grid;grid-template-columns:minmax(0,1.12fr) minmax(0,1fr);
-  gap:0 32px;align-items:start}
+  grid-template-rows:auto minmax(0,1fr);gap:0 32px;align-items:stretch;
+  height:calc(100vh - 150px);min-height:560px}
+ .g-a{grid-column:1;grid-row:1}
+ .g-b{grid-column:1;grid-row:2;overflow-y:auto;padding-right:6px}
+ .g-side{grid-column:2;grid-row:1 / span 2;overflow-y:auto;padding-right:6px}
  .glance-grid .prio{margin-top:0}
  .honesty .hon-t{flex:0 0 380px}
  .cardcols{columns:2;column-gap:28px}
  .cardcols .card{break-inside:avoid;margin-top:0;margin-bottom:18px}
+}
+@media (min-width:2100px){
+ .glance-grid{grid-template-columns:minmax(0,1.05fr) minmax(0,.95fr) minmax(0,1.05fr);
+  grid-template-rows:minmax(0,1fr);gap:0 36px}
+ .g-a{grid-column:1;grid-row:1;overflow-y:auto;padding-right:6px}
+ .g-b{grid-column:2;grid-row:1}
+ .g-side{grid-column:3;grid-row:1}
+ .cardcols{columns:3;column-gap:30px}
+ .hon-l{column-count:2;column-gap:40px}
 }
 .tabbar{position:sticky;top:0;z-index:30;display:flex;gap:6px;padding:10px 0 8px;
  background:var(--surface-1);border-bottom:1px solid var(--border);margin:14px 0 18px}
@@ -1278,9 +1293,11 @@ r.dataset.theme=r.dataset.theme==='dark'?'light':'dark'">라이트/다크</butto
 <section id="pane-glance">
 {_honesty_html()}
 <div class="glance-grid">
-<div class="g-main">
+<div class="g-a">
 <h2>사분면 — 촉매 대비 미반영</h2>
 <div class="panel">{_scatter(ranked)}</div>
+</div>
+<div class="g-b">
 {_top_picks(ranked)}
 {_changes_html(load_history())}
 </div>
