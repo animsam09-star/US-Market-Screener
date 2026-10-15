@@ -141,7 +141,7 @@ def _signal_rows(sigs, *, show_status: bool = True, claimed=None) -> str:
     return "".join(rows)
 
 
-def _scatter(results: list[ThemeResult]) -> str:
+def _scatter(results: list[ThemeResult], nums: dict | None = None) -> str:
     """사분면 산점도 — 오른쪽 위가 '촉매는 강한데 아직 안 오른' 목표 구역."""
     pts = [r for r in results if r.catalyst_score is not None and r.unpriced_score is not None]
     if not pts:
@@ -200,6 +200,10 @@ def _scatter(results: list[ThemeResult]) -> str:
         placed.append((x0, x1, y0 - 6, y0 + 6))
         return y0
 
+    nums = nums or {}
+    def _labeled(r):
+        return (r.name in nums or (r.catalyst_score or 0) >= 50
+                or (r.unpriced_score or 0) >= 70)
     for r in sorted(pts, key=lambda r: -(r.unpriced_score or 0)):
         b = bucket_of(r.lead_time)
         x, y = sx(r.catalyst_score), sy(r.unpriced_score)
@@ -210,12 +214,21 @@ def _scatter(results: list[ThemeResult]) -> str:
             f'{" pick" if _verdict(r)[0] in _POSITIVE_TAGS else ""}">'
             f'<title>{_e(r.name)} — 촉매 {r.catalyst_score:.0f} / 미반영 '
             f'{r.unpriced_score:.0f} / 게이트 {gate}개 통과</title></circle>')
+        if r.name in nums:
+            parts.append(f'<circle cx="{x + 11:.1f}" cy="{y - 10:.1f}" r="8.5" '
+                         f'class="pickbadge"/>'
+                         f'<text x="{x + 11:.1f}" y="{y - 6.4:.1f}" '
+                         f'class="pickbadge-n" text-anchor="middle">'
+                         f'{nums[r.name]}</text>')
+        if not _labeled(r):
+            continue
         anchor = "end" if x > PL + iw * 0.72 else "start"
         dx = -11 if anchor == "end" else 11
         w = 13.5 * len(r.name) + 6
         x0, x1 = (x + dx - w, x + dx) if anchor == "end" else (x + dx, x + dx + w)
         ly = _label_y(x0, x1, y + 4)
-        parts.append(f'<text x="{x + dx:.1f}" y="{ly:.1f}" class="ptlab" '
+        big = ' big' if r.name in nums else ''
+        parts.append(f'<text x="{x + dx:.1f}" y="{ly:.1f}" class="ptlab{big}" '
                      f'text-anchor="{anchor}">{_e(r.name)}</text>')
 
     parts.append("</svg>")
@@ -227,7 +240,7 @@ def _scatter(results: list[ThemeResult]) -> str:
     missing = [r for r in results if r not in pts]
     note = ""
     if missing:
-        note = ('<p class="nodata" style="margin-top:6px">측정 불가로 제외: '
+        note = ('<p class="nodata" style="margin-top:6px">라벨은 추천·고득점만 — 나머지 점은 커서를 올리면 이름이 뜹니다. 측정 불가로 제외: '
                 + ", ".join(_e(r.name) for r in missing)
                 + " — 촉매 또는 미반영 축의 데이터가 부족합니다(테마 카드 참조).</p>")
     return "".join(parts) + f'<div class="legend">{legend}</div>{note}'
@@ -446,26 +459,77 @@ def _history_line(r: ThemeResult, tag: str) -> str:
     return ('<p class="track">' + _e(" ".join(bits)) + "</p>") if bits else ""
 
 
+def _pick_numbers(ranked: list[ThemeResult]) -> dict[str, int]:
+    """상위 판정 테마 → 추천 번호(레일·사분면 배지 공용)."""
+    out: dict[str, int] = {}
+    for r in ranked:
+        if _verdict(r)[0] in _POSITIVE_TAGS:
+            out[r.name] = len(out) + 1
+    return out
+
+
+def _mbar(label: str, v: float | None, cls: str) -> str:
+    w = max(0.0, min(100.0, v or 0.0))
+    txt = "—" if v is None else f"{v:.0f}"
+    return (f'<span class="mb"><em>{label}</em>'
+            f'<span class="mb-t {cls}"><i style="width:{w:.0f}%"></i></span>'
+            f'<b>{txt}</b></span>')
+
+
+def _signal_strip(ranked: list[ThemeResult]) -> str:
+    """맨 위 한 줄 결론 — 시선이 처음 떨어질 곳."""
+    pos = [(r, _verdict(r)[0]) for r in ranked
+           if _verdict(r)[0] in _POSITIVE_TAGS]
+    best = [r.name for r, t in pos if t == "볼 만함"]
+    watch = [r.name for r, t in pos if t == "지켜볼 만"]
+    picks = [s_["ticker"] for _o, _p, _r, s_, _t in top_pick_rows(ranked)]
+    if best:
+        lead = (f'<b class="sig-n good">볼 만함 {len(best)}</b>'
+                f'<span class="sig-names">{_e(" · ".join(best))}</span>')
+        sub = "드문 신호 — 과거 이 판정 승률 79%"
+    elif watch:
+        lead = (f'<b class="sig-n warn">지켜볼 만 {len(watch)}</b>'
+                f'<span class="sig-names">{_e(" · ".join(watch))}</span>')
+        sub = "'볼 만함'은 0개 — 조건은 왔지만 확신은 반 박자 아래"
+    else:
+        lead = '<b class="sig-n na">신호 없음</b>'
+        sub = "상위 판정 0개 — 이 신호는 연 2회꼴, 없는 게 정상 상태"
+    pk = (f'<span class="sig-picks">종목 '
+          + " ".join(f"<b>{_e(t)}</b>" for t in picks) + "</span>") if picks else ""
+    return (f'<div class="sigrow"><span class="sig-k">지금 신호</span>{lead}'
+            f'<span class="sig-sub">{_e(sub)}</span>{pk}</div>')
+
+
 def _sector_picks(ranked: list[ThemeResult]) -> str:
-    """사분면에서 고른 추천 섹터 — 히어로 옆 핵심 출력(상위 판정만)."""
+    """추천 섹터 레일 — 스캔 가능한 행(번호·칩·막대·승격 조건 한 줄)."""
+    nums = _pick_numbers(ranked)
     rows = []
     for i, r in enumerate(ranked, 1):
-        tag, cls, text = _verdict(r)
+        tag, cls, _text = _verdict(r)
         if tag not in _POSITIVE_TAGS:
             continue
+        if tag == "볼 만함":
+            cond = "지금이 그 구간 — 과거 승률 79%"
+        else:
+            cand = [AXIS_NOUN.get(x.key, x.label) for x in r.claimed_axes
+                    if x.key in STABLE_AXES]
+            cond = ("승격 조건: " + "·".join(cand) + " 신호 회복"
+                    ) if cand else "승격 조건: 안정 축 확인"
         rows.append(
-            f'<li><a href="#t{i}"><strong>{_e(r.name)}</strong></a>'
+            f'<li><a class="sp-row" href="#t{i}">'
+            f'<span class="sp-badge">{nums[r.name]}</span>'
+            f'<span class="sp-name">{_e(r.name)}</span>'
             f'<span class="vd {cls}">{_e(tag)}</span>'
-            f'<span class="sp-co">촉매 {r.catalyst_score:.0f} · '
-            f'미반영 {(r.unpriced_score or 0):.0f}</span>'
-            f'<span class="sp-why">{_e(text)}</span></li>')
+            f'<span class="sp-bars">{_mbar("촉매", r.catalyst_score, "b-cat")}'
+            f'{_mbar("미반영", r.unpriced_score, "b-unp")}</span>'
+            f'<span class="sp-cond">{_e(cond)}</span></a></li>')
         if len(rows) >= 5:
             break
     if not rows:
         return ('<div class="secpicks"><h2>지금 추천 섹터</h2>'
                 '<p class="nodata">상위 판정(볼 만함·지켜볼 만) 섹터가 지금은 없습니다 — '
                 '이 신호는 연평균 2번꼴로만 뜹니다. 억지로 고르면 승률 50% 그룹입니다.</p></div>')
-    return ('<div class="secpicks"><h2>지금 추천 섹터 — 사분면 우상단부터</h2>'
+    return ('<div class="secpicks"><h2>추천 섹터 <em>번호는 사분면 배지</em></h2>'
             '<ol class="sp-list">' + "".join(rows) + "</ol></div>")
 
 
@@ -888,60 +952,40 @@ def top_pick_rows(ranked: list[ThemeResult]) -> list:
 
 
 def _top_picks(ranked: list[ThemeResult]) -> str:
-    """맨 위 '지금 가장 추천하는 3종목' 카드 렌더."""
+    """추천 3종목 — 티커·숫자 칩 중심의 행(문단 금지)."""
     top = top_pick_rows(ranked)
     if not top:
         return ""
-
     items = []
-    for i, (_, negp, r, s, tag) in enumerate(top, 1):
-        t = s["ticker"]
+    for i, (_, _negp, r, s_, tag) in enumerate(top, 1):
+        t = s_["ticker"]
         name = NAMES.get(t.upper(), "")
         tops = r.top_axes
-        why_theme = AXIS_PLAIN.get(tops[0].key, tops[0].label) if tops else ""
+        why = AXIS_NOUN.get(tops[0].key, "촉매") if tops else "촉매"
 
-        def v(k, fmt, suf=""):
-            x = s.get(k)
-            return f"{fmt.format(x)}{suf}" if x is not None else "—"
+        def chip(label, k, fmt, suf=""):
+            x = s_.get(k)
+            if x is None:
+                return ""
+            return f'<span class="nchip"><em>{label}</em>{fmt.format(x)}{suf}</span>'
 
-        up = s.get("upside") or 0
-        a12 = s.get("abs_12m")
-        # 여력은 '테마 내 상대값'이다 — +116% 오른 종목에 "덜 올랐다"고 쓰면
-        # 거짓말이 된다(DINO 실측). 절대 상승률에 따라 문장을 가른다.
-        if up >= 50 and (a12 is None or a12 < 30):
-            px_part = (f"주가는 12개월 {v('abs_12m', '{:+.0f}', '%')}로 "
-                       "아직 덜 올라 여력이 남았습니다")
-        elif up >= 50:
-            px_part = (f"주가가 12개월 {v('abs_12m', '{:+.0f}', '%')} 올랐지만 "
-                       "테마 안에서는 실적 대비 상대적으로 여력이 남은 편입니다")
-        else:
-            px_part = (f"주가는 12개월 {v('abs_12m', '{:+.0f}', '%')} — 반영이 "
-                       "진행돼 실적 개선 속도가 관건입니다")
-        u3 = next((x for x in r.unpriced if x.key == "U3"), None)
-        trel = u3.raw if u3 and u3.raw is not None else None
-        flat = ""
-        if (s.get("upside") or 0) >= 50 and (s.get("abs_12m") is None
-                                             or s["abs_12m"] < 15):
-            flat = (' <span class="pick-flat">왜 아직 안 올랐나: '
-                    + _e(" / ".join(why_flat(trel, s))) + '.</span>')
-        reason = (f"<strong>{_e(r.name)}</strong>(판정 {_e(tag)}) — {_e(why_theme)} "
-                  f"이 테마 수혜 1위: 매출 {v('rev_yoy', '{:+.1f}', '%')}"
-                  + (f", 이익률 개선 {v('opm_delta', '{:+.1f}', '%p')}"
-                     if s.get("opm_delta") is not None else "")
-                  + f". {px_part} (수혜 {v('benefit', '{:.0f}')}"
-                  f"·여력 {v('upside', '{:.0f}')}).{flat}")
         items.append(
             f'<li class="pick"><span class="pick-n">{i}</span>'
-            f'<div class="pick-b"><span class="pick-t">{_e(t)}</span>'
-            f'<span class="pick-co">{_e(name)}</span>'
-            f'<p class="pick-why">{reason}</p></div></li>')
-
-    return ('<div class="picks"><h2 class="picks-h">지금 가장 추천하는 3종목</h2>'
+            f'<div class="pick-b"><div class="pick-line1">'
+            f'<span class="pick-t">{_e(t)}</span>'
+            f'<span class="pick-co">{_e(name)}</span></div>'
+            f'<div class="pick-line2"><span class="nchip th">{_e(r.name)}</span>'
+            + chip("수혜", "benefit", "{:.0f}")
+            + chip("여력", "upside", "{:.0f}")
+            + chip("매출", "rev_yoy", "{:+.1f}", "%")
+            + chip("12M", "abs_12m", "{:+.0f}", "%")
+            + f'</div><p class="pick-why">{_e(why)} 테마의 수혜 1위.</p>'
+            f'</div></li>')
+    return ('<div class="picks"><h2 class="picks-h">추천 종목</h2>'
             '<ol class="picks-l">' + "".join(items) + '</ol>'
-            '<p class="picks-note">촉매가 확인된 테마 안에서 수혜(실적)와 '
-            '상승여력을 함께 요구한 자동 선별이다 — 데이터 기준 우선순위이지 '
-            '리서치 판단을 대체하지 않는다. 근거는 아래 테마 카드에서 축별로 '
-            '확인할 것.</p></div>')
+            '<p class="picks-note">촉매 확인 테마 안에서 수혜×여력 자동 선별 — '
+            '근거는 테마 카드에서.</p></div>')
+
 
 
 def _priority_list(ranked: list[ThemeResult]) -> str:
@@ -1009,7 +1053,44 @@ CSS = """
 --good:#0e9e54;--warning:#e8a714;--critical:#d03b3b;--seq-200:#b9c2f0;--seq-450:#2d2c92;
 --navy:#1a1a58;--cyan:#00aeef}
 [hidden]{display:none!important}
+.sigrow{display:flex;align-items:baseline;gap:14px;flex-wrap:wrap;
+ margin:4px 0 16px;padding:14px 18px;border:1px solid var(--border);
+ border-left:5px solid var(--cyan);border-radius:12px;background:var(--surface-1)}
+.sig-k{font-size:13px;font-weight:800;color:var(--muted);letter-spacing:.06em}
+.sig-n{font-size:24px;font-weight:900}
+.sig-n.good{color:var(--good)}.sig-n.warn{color:#b07f10}.sig-n.na{color:var(--muted)}
+.sig-names{font-size:19px;font-weight:800;color:var(--text-primary)}
+.sig-sub{font-size:13px;color:var(--text-secondary)}
+.sig-picks{margin-left:auto;font-size:14px;color:var(--text-secondary)}
+.sig-picks b{font-size:17px;color:var(--navy);margin-left:6px}
 .secpicks h2{margin:4px 0 10px;font-size:17px}
+.secpicks h2 em{font-size:12px;font-weight:500;color:var(--muted);font-style:normal;margin-left:8px}
+.sp-row{display:grid;grid-template-columns:30px 1fr auto;gap:2px 10px;
+ align-items:center;text-decoration:none;color:inherit;padding:10px 6px;
+ border-radius:10px}
+.sp-row:hover{background:var(--plane)}
+.sp-badge{grid-row:1/span 3;width:26px;height:26px;border-radius:50%;
+ background:#c9a227;color:#fff;font-weight:800;display:flex;
+ align-items:center;justify-content:center}
+.sp-name{font-size:16.5px;font-weight:800}
+.sp-bars{grid-column:2/span 2;display:flex;gap:16px}
+.mb{display:flex;align-items:center;gap:6px;flex:1}
+.mb em{font-style:normal;font-size:11.5px;color:var(--muted);width:38px}
+.mb-t{flex:1;height:7px;border-radius:4px;background:var(--grid);overflow:hidden}
+.mb-t i{display:block;height:100%}
+.mb-t.b-cat i{background:var(--seq-450)}
+.mb-t.b-unp i{background:var(--cyan)}
+.mb b{font-size:13px;width:24px;text-align:right}
+.sp-cond{grid-column:2/span 2;font-size:12.5px;color:var(--text-secondary)}
+.pick-line1{display:flex;align-items:baseline;gap:8px}
+.pick-line2{display:flex;flex-wrap:wrap;gap:6px;margin:5px 0 2px}
+.nchip{font-size:12px;padding:2px 8px;border-radius:999px;
+ border:1px solid var(--border);background:var(--plane)}
+.nchip em{font-style:normal;color:var(--muted);margin-right:4px}
+.nchip.th{border-color:var(--seq-200)}
+.pickbadge{fill:#c9a227}
+.pickbadge-n{fill:#fff;font-size:11px;font-weight:800}
+.ptlab.big{font-weight:800;font-size:13px}
 .sp-list{list-style:none;margin:0;padding:0}
 .sp-list li{padding:9px 0;border-bottom:1px solid var(--border)}
 .sp-list a{text-decoration:none;color:var(--text-primary);font-size:15px;margin-right:8px}
@@ -1380,10 +1461,10 @@ r.dataset.theme=r.dataset.theme==='dark'?'light':'dark'">라이트/다크</butto
 </nav>
 
 <section id="pane-glance">
+{_signal_strip(ranked)}
 <div class="hero">
 <div class="hero-sc">
-<h2>사분면 — 촉매 대비 미반영</h2>
-<div class="panel">{_scatter(ranked)}</div>
+<div class="panel">{_scatter(ranked, _pick_numbers(ranked))}</div>
 </div>
 <div class="hero-side">
 {_sector_picks(ranked)}
