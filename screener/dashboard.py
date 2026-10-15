@@ -178,9 +178,13 @@ def _scatter(results: list[ThemeResult]) -> str:
     parts.append(f'<text x="16" y="{PT + ih / 2:.0f}" class="axlab" text-anchor="middle" '
                  f'transform="rotate(-90 16 {PT + ih / 2:.0f})">미반영 점수 → (왜 아직 안 올랐나)</text>')
     parts.append(f'<text x="{sx(98):.0f}" y="{sy(97):.0f}" class="quadlab" text-anchor="end">'
-                 f'목표 구역</text>')
+                 f'목표 구역 — 이유 있고 가격 아직</text>')
     parts.append(f'<text x="{sx(98):.0f}" y="{sy(3):.0f}" class="quadlab dim" text-anchor="end">'
                  f'이미 반영됨</text>')
+    parts.append(f'<text x="{sx(2):.0f}" y="{sy(97):.0f}" class="quadlab dim" text-anchor="start">'
+                 f'눌렸지만 이유 약함</text>')
+    parts.append(f'<text x="{sx(2):.0f}" y="{sy(3):.0f}" class="quadlab dim" text-anchor="start">'
+                 f'지금은 아님</text>')
 
     for r in pts:
         b = bucket_of(r.lead_time)
@@ -201,7 +205,14 @@ def _scatter(results: list[ThemeResult]) -> str:
     legend = "".join(
         f'<span class="lg"><i style="background:{c}"></i>{_e(n)} <em>{_e(rng)}</em></span>'
         for n, rng, c in BUCKETS)
-    return "".join(parts) + f'<div class="legend">{legend}</div>'
+    # 좌표가 없는 테마를 조용히 빼면 "왜 없지"가 된다 — 사유와 함께 밝힌다.
+    missing = [r for r in results if r not in pts]
+    note = ""
+    if missing:
+        note = ('<p class="nodata" style="margin-top:6px">측정 불가로 제외: '
+                + ", ".join(_e(r.name) for r in missing)
+                + " — 촉매 또는 미반영 축의 데이터가 부족합니다(테마 카드 참조).</p>")
+    return "".join(parts) + f'<div class="legend">{legend}</div>{note}'
 
 
 def _card(r: ThemeResult, rank: int) -> str:

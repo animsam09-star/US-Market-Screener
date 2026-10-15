@@ -776,6 +776,63 @@ def f29_census_time_param():
     check("F29 공백 인코딩", " " not in u, u)
 
 
+# ---------------------------------------------------------------- F46
+def f46_theme_schema():
+    """themes.yaml 스키마 게이트 — 선언한 촉매는 측정 가능해야 한다.
+
+    측정 못 하는 축을 선언하면 '일부확인불가'만 쌓이고(백테스트에서 저성과),
+    조용한 nodata 가 된다. 축별 필요 설정: A1=customers, A2=가동률 또는
+    능력지수, A3=edgar_keywords, A7=ppi 판가·원가, A8=재고·출하,
+    A9=수주잔고. 티커는 테마 간 중복 금지(한 종목 한 테마), SEC CIK 해석
+    가능해야 한다(동봉 사본 기준).
+    """
+    import yaml
+    from screener.axes import resolve_catalysts
+
+    root = Path(__file__).resolve().parent.parent
+    d = yaml.safe_load((root / "themes.yaml").read_text(encoding="utf-8"))
+    themes = d["themes"]
+    check("F46 테마 수 확장(23+)", len(themes) >= 23, str(len(themes)))
+
+    need = {
+        "A2": lambda t: (t.get("fred") or {}).get("capacity_utilization")
+        or (t.get("fred") or {}).get("capacity_index"),
+        "A3": lambda t: t.get("edgar_keywords"),
+        "A7": lambda t: (t.get("fred") or {}).get("ppi_output")
+        and (t.get("fred") or {}).get("ppi_input"),
+        "A8": lambda t: ((t.get("fred") or {}).get("inventories")
+                         and (t.get("fred") or {}).get("shipments"))
+        or (t.get("fred") or {}).get("inventory_ratio"),
+        "A9": lambda t: (t.get("fred") or {}).get("unfilled_orders"),
+        "A1": lambda t: (t.get("customers") or {}).get("tickers"),
+    }
+    bad, dup, seen = [], [], {}
+    for t in themes:
+        keys, unknown = resolve_catalysts(t.get("catalysts") or [])
+        if unknown:
+            bad.append(f"{t['name']}: 미해석 촉매 {unknown}")
+        for k in keys:
+            fn = need.get(k)
+            if fn and not fn(t):
+                bad.append(f"{t['name']}: {k} 선언인데 측정 설정 없음")
+        for tk in t.get("tickers") or []:
+            if tk in seen:
+                dup.append(f"{tk}({seen[tk]}↔{t['name']})")
+            seen[tk] = t["name"]
+    check("F46 선언 촉매 전부 측정 가능", not bad, "; ".join(bad))
+    check("F46 테마 간 티커 중복 없음", not dup, "; ".join(dup))
+
+    try:
+        from screener.sources import _VENDORED_TICKERS
+        import json as _json
+        m = {k.upper() for k in _json.loads(
+            _VENDORED_TICKERS.read_text(encoding="utf-8"))}
+        miss = [tk for tk in seen if tk.upper() not in m]
+        check("F46 전 티커 CIK 해석(동봉 사본)", not miss, str(miss))
+    except Exception as e:
+        check("F46 전 티커 CIK 해석(동봉 사본)", True, f"사본 없음 — 생략({e})")
+
+
 # ---------------------------------------------------------------- F45
 def f45_stable_axes_self_update():
     """안정 축 목록은 하드코딩이 아니라 백테스트 산출물에서 재선정된다.
@@ -1377,7 +1434,7 @@ def main() -> int:
                f36_xbrl_tag_and_fiscal_calendar, f37_annual_fallback,
                f38_why_flat_diagnosis, f39_week_changes, f40_earnings_link,
                f41_pead_point_in_time, f42_price_snapshot_fallback,
-               f43_sample_window, f44_stable_axis_gate, f45_stable_axes_self_update]:
+               f43_sample_window, f44_stable_axis_gate, f45_stable_axes_self_update, f46_theme_schema]:
         try:
             fn()
         except Exception as e:

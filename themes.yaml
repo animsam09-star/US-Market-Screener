@@ -165,7 +165,10 @@ themes:
 
   - name: 원자력 연료주기
     thesis: 각국 원전 회귀 + 러시아산 농축우라늄 배제로 서방 농축·변환 능력이 병목
-    catalysts: [정책, 병목]
+    # 병목 축(⑨)은 농축 산업의 수주잔고 시리즈가 없어 측정 불가였다 —
+    # 선언만 하고 못 재면 만성 '일부확인불가'가 된다(F46). 유틸리티 고객
+    # 수요 전이(낙수)로 교체: 같은 논지를 측정 가능한 쪽에서 본다.
+    catalysts: [정책, 낙수]
     lead_time: 12~36M
     # 체인: 채굴(CCJ 세계 2위 / UEC·DNN·NXE 미주 개발)
     #      → 변환·농축(LEU — 미국 유일 NRC 승인 HALEU, 2026-01 DOE 9억$ 수주)
@@ -389,3 +392,246 @@ themes:
     fred:
       industrial_production: IPN213111N     # 석유·가스 시추
       capacity_utilization: CAPUTLG21S
+
+  # ===========================================================================
+  # 2026-10-15 확장분 — "더 많은 섹터" 요청. 원칙: 선언 촉매는 측정 가능한
+  # 축만(측정 못 하는 주장을 선언하면 '일부확인불가'만 쌓인다).
+  # ===========================================================================
+
+  - name: 구리·금속광산
+    thesis: 전력망·전동화·데이터센터로 구리 수요는 구조 성장인데 신규 광산 투자는 10년째 부진
+    catalysts: [캐펙스, 낙수]
+    lead_time: 12~36M
+    # 체인: 대형 구리(FCX·SCCO) → 중형 캐나다(HBM·ERO — IFRS 연간 공시라 연간 폴백)
+    tickers: [FCX, SCCO, HBM, ERO]
+    customers:
+      tickers: [GEV, ETN, HUBB, PWR, TSLA]
+      series: IPG335S          # 전기장비 생산 = 구리의 최대 전방
+    edgar_keywords: ["copper deficit", "mine supply", "smelter capacity", "grade decline"]
+    fedreg_terms: ["critical minerals", "mining permit"]
+    fedreg_agencies: [interior-department]
+    fred:
+      industrial_production: IPG2122S      # 금속광석 채굴
+      capacity_utilization: CAPUTLG2122S
+      capacity_index: CAPG2122S
+      ppi_output: PCU212230212230          # 구리·니켈·아연 채굴 판가
+      ppi_input: WPU057303                 # 경유(채굴 연료비)
+
+  - name: 알루미늄
+    thesis: 전력비용·관세로 해외 공급이 제약되는데 국내 제련 능력은 수십 년 축소 — 재고화 안 되는 금속
+    catalysts: [캐펙스, 마진]
+    lead_time: 6~18M
+    tickers: [AA, CENX, KALU, CSTM]
+    customers:
+      tickers: [GM, F, PCAR, BA, CMI]
+      series: IPG336S          # 운송장비 생산 = 알루미늄 최대 전방
+    edgar_keywords: ["smelter restart", "aluminum tariff", "power contract"]
+    fedreg_terms: ["aluminum import", "Section 232"]
+    fedreg_agencies: [commerce-department]
+    fred:
+      industrial_production: IPG3313S      # 알루미나·알루미늄
+      ppi_output: WPU102302                # 알루미늄 밀 제품 판가
+      ppi_input: WPU0542                   # 산업용 전력(제련 원가의 핵심)
+
+  - name: 석탄
+    thesis: ESG 로 신규 투자가 막힌 채 전력 수요 반등 — 공급은 못 늘고 가격만 탄력
+    catalysts: [캐펙스, 마진]
+    lead_time: 6~18M
+    tickers: [BTU, AMR, HCC, CNR, ARLP]
+    customers:
+      tickers: [SO, DUK, AEP, VST, NUE]
+      series: IPUTIL           # 발전 수요
+    edgar_keywords: ["coal plant retirement deferral", "met coal", "export capacity"]
+    fedreg_terms: ["coal leasing", "power plant emissions"]
+    fedreg_agencies: [interior-department, environmental-protection-agency]
+    fred:
+      industrial_production: IPN2121S      # 석탄 채굴
+      ppi_output: WPU051                   # 석탄 판가
+      ppi_input: WPU057303                 # 경유
+
+  - name: 천연가스 E&P
+    thesis: 데이터센터 전력 + LNG 수출 증설로 가스 수요는 계단식 성장, 가스전 투자는 절제 지속
+    catalysts: [낙수, 마진]
+    lead_time: 6~18M
+    tickers: [EQT, AR, RRC, EXE, GPOR]
+    customers:
+      tickers: [NEE, SO, VST, CEG, LNG, DUK]
+      series: IPUTIL
+    edgar_keywords: ["LNG offtake", "data center power agreement", "in-basin demand"]
+    fedreg_terms: ["LNG export", "natural gas pipeline"]
+    fedreg_agencies: [energy-department, federal-energy-regulatory-commission]
+    fred:
+      industrial_production: IPG211S       # 석유·가스 추출
+      capacity_utilization: CAPUTLG211S
+      ppi_output: WPU0531                  # 천연가스 판가
+      ppi_input: PCU213111213111           # 시추 서비스 원가
+
+  - name: 철도
+    thesis: 리쇼어링 물동량 + 트럭 대비 비용 우위 — 물량이 돌아서면 운임 인상분이 그대로 이익
+    catalysts: [낙수, 마진]
+    lead_time: 3~12M
+    tickers: [UNP, CSX, NSC]
+    customers:
+      tickers: [ADM, BG, DOW, MLM, VMC, NUE]
+      series: INDPRO           # 철도 물동 = 산업생산 전반
+    edgar_keywords: ["intermodal volume", "merchandise carloads", "service metrics"]
+    fedreg_terms: ["freight rail", "rail safety"]
+    fedreg_agencies: [surface-transportation-board, federal-railroad-administration]
+    fred:
+      industrial_production: RAILFRTCARLOADSD11   # 철도 화물 적재량
+      ppi_output: PCU482111482111                 # 철도 운임
+      ppi_input: WPU057303                        # 디젤
+
+  - name: 광네트워킹·AI 인프라
+    thesis: AI 클러스터의 병목이 연산에서 상호연결(800G→1.6T 광모듈·스위치)로 이동
+    catalysts: [낙수, 신기술]
+    lead_time: 3~12M
+    # 체인: 스위칭(ANET) → 광모듈·부품(COHR·LITE·FN) → 장거리 전송(CIEN) → SerDes(CRDO)
+    tickers: [ANET, CIEN, COHR, LITE, FN, CRDO]
+    customers:
+      tickers: [MSFT, AMZN, GOOGL, META, ORCL]
+      series: IPG3344S
+    edgar_keywords: ["1.6T", "800G optics", "co-packaged optics", "AI cluster interconnect"]
+    fedreg_terms: ["broadband infrastructure"]
+    fedreg_agencies: [commerce-department]
+    fred:
+      industrial_production: IPG3344S
+      capacity_utilization: CAPUTLG3344S
+      inventories: A34STI
+      shipments: A34SVS
+      new_orders: A34SNO
+      unfilled_orders: U34SUO
+
+  - name: 생명과학 도구
+    thesis: 바이오텍 자금조달·제약 R&D 회복 + 2년 재고 소진 종료로 소모품 재주문 사이클
+    catalysts: [낙수, 재고]
+    lead_time: 6~18M
+    tickers: [TMO, DHR, WAT, RGEN, BRKR, A]
+    customers:
+      tickers: [LLY, MRK, PFE, AMGN, REGN, VRTX]
+      series: IPG3254S         # 제약 생산 = 도구·소모품의 전방
+    edgar_keywords: ["bioprocessing orders", "destocking", "book-to-bill"]
+    fedreg_terms: ["drug pricing", "biosecurity"]
+    fedreg_agencies: [food-and-drug-administration, national-institutes-of-health]
+    fred:
+      industrial_production: IPG3345S      # 계측기기
+      inventories: A34STI
+      shipments: A34SVS
+
+  # ===========================================================================
+  # 2026-10-15 확장 2차 — "섹터를 더". 같은 원칙: 측정 가능한 촉매만 선언.
+  # 해운(탱커)은 주요사가 20-F 연간 공시(외국계)라 분기 재무 집계가 안 돼 보류.
+  # ===========================================================================
+
+  - name: 독립발전·전력판매
+    thesis: 데이터센터 전력 수요가 공급 증설보다 빠르다 — 도매 전력가와 장기계약 단가가 먼저 뛴다
+    catalysts: [낙수, 마진]
+    lead_time: 6~18M
+    tickers: [VST, CEG, NRG, TLN]
+    customers:
+      tickers: [MSFT, AMZN, GOOGL, META, EQIX, DLR]
+      series: IPG3341S
+    edgar_keywords: ["power purchase agreement", "data center load", "capacity auction"]
+    fedreg_terms: ["capacity market", "interconnection"]
+    fedreg_agencies: [federal-energy-regulatory-commission]
+    fred:
+      industrial_production: IPUTIL
+      ppi_output: PCU22112222112241     # 산업용 전력 판가
+      ppi_input: WPU0531                # 천연가스(연료비) — 스파크 스프레드
+
+  - name: 골재·시멘트
+    thesis: 인프라 예산 집행 + 지역 과점이라 운반거리 밖 경쟁이 없다 — 물량 회복분이 단가에 얹힌다
+    catalysts: [정책, 마진]
+    lead_time: 12~24M
+    tickers: [MLM, VMC, EXP, KNF]
+    customers:
+      tickers: [PWR, MTZ, GVA, ACM]
+      series: TLCOMCONS                 # 상업 건설 지출
+    edgar_keywords: ["aggregates pricing", "infrastructure funding", "backlog"]
+    fedreg_terms: ["federal-aid highway", "infrastructure investment"]
+    fedreg_agencies: [transportation-department, federal-highway-administration]
+    fred:
+      industrial_production: IPG3273S   # 시멘트·콘크리트
+      ppi_output: PCU327320327320       # 레미콘 판가
+      ppi_input: WPU057303              # 경유(운반비)
+
+  - name: 가스 미드스트림
+    thesis: LNG 수출·발전용 가스 물동량이 늘면 파이프라인·터미널은 물량×요금이 그대로 이익
+    catalysts: [낙수, 정책]
+    lead_time: 6~18M
+    tickers: [WMB, KMI, OKE, ET]
+    customers:
+      tickers: [EQT, AR, RRC, LNG]
+      series: IPG211S                   # 석유·가스 추출 = 물동량의 원천
+    edgar_keywords: ["pipeline expansion", "LNG feedgas", "takeaway capacity"]
+    fedreg_terms: ["natural gas pipeline certificate", "LNG export"]
+    fedreg_agencies: [federal-energy-regulatory-commission, energy-department]
+    fred:
+      industrial_production: IPG211S
+
+  - name: 반도체 전공정 장비
+    thesis: 선단 공정 전환(GAA·HBM 증설)과 리쇼어링 팹 건설이 겹쳐 장비 수주가 구조적으로 밀려 있다
+    catalysts: [낙수, 신기술]
+    lead_time: 6~18M
+    # ACLS(이온주입)는 후공정 테마에서 전공정으로 재분류된 이력 그대로 여기에
+    tickers: [AMAT, LRCX, KLAC, ACLS]
+    customers:
+      tickers: [INTC, MU, GFS, TXN]
+      series: IPG3344S
+    edgar_keywords: ["gate-all-around", "high-NA EUV", "advanced node capacity", "HBM capacity"]
+    fedreg_terms: ["semiconductor export control", "CHIPS incentives"]
+    fedreg_agencies: [commerce-department]
+    fred:
+      industrial_production: IPG3344S
+      capacity_utilization: CAPUTLG3344S
+      inventories: A34STI
+      shipments: A34SVS
+      new_orders: A34SNO
+      unfilled_orders: U34SUO
+
+  - name: 공장 자동화
+    thesis: 리쇼어링 공장은 인력난 때문에 사람보다 자동화로 채워진다 — 착공→장비 발주의 시차 수혜
+    catalysts: [낙수, 신기술]
+    lead_time: 6~18M
+    tickers: [ROK, EMR, CGNX, NDSN]
+    customers:
+      tickers: [GM, F, TSLA, CAT, DE]
+      series: IPMAN                     # 제조업 생산 전반
+    edgar_keywords: ["factory automation", "machine vision", "reshoring capacity"]
+    fedreg_terms: ["advanced manufacturing"]
+    fedreg_agencies: [commerce-department]
+    fred:
+      industrial_production: IPG333S
+      capacity_utilization: CAPUTLG333S
+      inventories: A33STI
+      shipments: A33SVS
+      new_orders: A33SNO
+      unfilled_orders: U33SUO
+
+  - name: 농산물 가공
+    thesis: 곡물가 하락기에 가공 스프레드(원료↔제품 가격차)가 벌어진다 — 원료 매입가가 먼저 빠진다
+    catalysts: [마진]
+    lead_time: 3~12M
+    tickers: [ADM, BG, INGR, DAR]
+    customers: {}                       # 최종 고객이 식품 전반이라 특정 고객군이 없다
+    edgar_keywords: ["crush margin", "soybean processing capacity", "renewable diesel feedstock"]
+    fedreg_terms: ["renewable fuel standard", "biofuel"]
+    fedreg_agencies: [environmental-protection-agency, agriculture-department]
+    fred:
+      industrial_production: IPG311S
+      ppi_output: PCU311224311224       # 대두 가공품 판가
+      ppi_input: WPU01830131            # 대두 원료가
+
+  - name: 항공사
+    thesis: 기재 인도 지연으로 좌석 공급이 묶인 채 수요만 회복 — 운임이 연료비보다 빨리 오른다
+    catalysts: [마진]
+    lead_time: 3~12M
+    tickers: [DAL, UAL, AAL, ALK, LUV]
+    customers: {}                       # 최종 고객이 가계·기업 출장 전반
+    edgar_keywords: ["aircraft delivery delay", "capacity discipline", "unit revenue"]
+    fedreg_terms: ["air carrier", "slot"]
+    fedreg_agencies: [federal-aviation-administration, transportation-department]
+    fred:
+      industrial_production: AIRRPMTSI  # 여객 마일
+      ppi_output: CUSR0000SETG01        # 항공운임 CPI
+      ppi_input: WPU0572                # 제트연료
