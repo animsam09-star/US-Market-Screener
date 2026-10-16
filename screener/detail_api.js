@@ -71,20 +71,37 @@ async function yahooRss(t) {
 
 /* 제목 한 줄 번역. 개요 탭과 같은 경로(구글 번역)를 쓴다 — 이쪽은 Worker 에서
    막히지 않는 것을 이미 확인했다. 실패하면 원문을 그대로 둔다. */
+// 번역 경로 두 개. Cloudflare 서버에서는 gtx 경로가 막히거나 한도에 걸려
+// 뉴스 제목 번역이 0건이었다(이 PC 에서는 둘 다 된다) — 실패하면 두 번째로.
+async function trGtx(q) {
+  const r = await fetch(
+    "https://translate.googleapis.com/translate_a/single?client=gtx" +
+      "&sl=en&tl=ko&dt=t&q=" + encodeURIComponent(q),
+    { headers: { "User-Agent": YUA } }
+  );
+  if (!r.ok) return null;
+  const d = await r.json();
+  if (!Array.isArray(d) || !Array.isArray(d[0])) return null;
+  return d[0].map((x) => (x && x[0]) || "").join("").trim() || null;
+}
+async function trDict(q) {
+  const r = await fetch(
+    "https://clients5.google.com/translate_a/t?client=dict-chrome-ex" +
+      "&sl=en&tl=ko&q=" + encodeURIComponent(q),
+    { headers: { "User-Agent": YUA } }
+  );
+  if (!r.ok) return null;
+  const d = await r.json();
+  // 응답 모양: ["번역"] 또는 [["번역","en"]]
+  const v = Array.isArray(d) ? (Array.isArray(d[0]) ? d[0][0] : d[0]) : null;
+  return typeof v === "string" && v.trim() ? v.trim() : null;
+}
+async function trAny(q) {
+  try { const a = await trGtx(q); if (a) return a; } catch (e) {}
+  try { return await trDict(q); } catch (e) { return null; }
+}
 async function trKo(text) {
-  try {
-    const r = await fetch(
-      "https://translate.googleapis.com/translate_a/single?client=gtx" +
-        "&sl=en&tl=ko&dt=t&q=" + encodeURIComponent(text.slice(0, 400)),
-      { headers: { "User-Agent": YUA } }
-    );
-    if (!r.ok) return null;
-    const d = await r.json();
-    if (!Array.isArray(d) || !Array.isArray(d[0])) return null;
-    return d[0].map((x) => (x && x[0]) || "").join("").trim() || null;
-  } catch (e) {
-    return null;
-  }
+  return trAny(text.slice(0, 400));
 }
 
 async function yahooNews(t) {
@@ -123,8 +140,8 @@ async function news(url) {
   }
   const items = [...byKey.values()].sort((a, b) => b.w - a.w).slice(0, NEWS_MAX);
   // 제목을 한국어로. 한 번에 여러 개를 부르되 너무 몰아치지 않는다.
-  for (let i = 0; i < items.length; i += 6) {
-    const part = items.slice(i, i + 6);
+  for (let i = 0; i < items.length; i += 3) {
+    const part = items.slice(i, i + 3);
     const ko = await Promise.all(part.map((x) => trKo(x.t)));
     part.forEach((x, j) => { if (ko[j]) x.k = ko[j]; });
   }
@@ -248,19 +265,9 @@ async function translateKo(text) {
   if (parts.length > 6) parts.length = 6;        // 지나치게 긴 글은 앞부분만
   const out = [];
   for (const p of parts) {
-    try {
-      const r = await fetch(
-        "https://translate.googleapis.com/translate_a/single?client=gtx" +
-          "&sl=en&tl=ko&dt=t&q=" + encodeURIComponent(p),
-        { headers: { "User-Agent": YUA } }
-      );
-      if (!r.ok) return null;
-      const d = await r.json();
-      if (!Array.isArray(d) || !Array.isArray(d[0])) return null;
-      out.push(d[0].map((x) => (x && x[0]) || "").join(""));
-    } catch (e) {
-      return null;
-    }
+    const ko = await trAny(p);
+    if (!ko) return null;
+    out.push(ko);
   }
   const joined = out.join(" ").trim();
   return joined || null;
