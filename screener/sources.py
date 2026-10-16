@@ -398,6 +398,48 @@ def _parse_finnhub(payload) -> dict | None:
         return None
 
 
+# 애널리스트 추천 추이 — 월별 매수/보유/매도 의견 수. 무료 티어는 분당 60회라
+# 새로 받는 호출 수에 상한을 두고(1회 실행 40), 8일 캐시로 나눠 갱신한다.
+_RECO_BUDGET = {"left": 40}
+
+
+def _parse_reco(payload) -> list[dict]:
+    out = []
+    if not isinstance(payload, list):
+        return out
+    for e in payload:
+        try:
+            buy = int(e.get("strongBuy") or 0) + int(e.get("buy") or 0)
+            tot = buy + int(e.get("hold") or 0) + int(e.get("sell") or 0) \
+                + int(e.get("strongSell") or 0)
+            out.append({"period": str(e["period"])[:7], "buy": buy, "total": tot})
+        except (KeyError, TypeError, ValueError):
+            continue
+    out.sort(key=lambda x: x["period"])
+    return out
+
+
+def finnhub_reco(ticker: str) -> list[dict]:
+    """[{period: YYYY-MM, buy, total}] 오래된 순. 키 없음·예산 초과·실패는 []."""
+    from .keys import finnhub_key
+    from .net import is_fresh
+    k = finnhub_key()
+    if not k:
+        return []
+    url = (f"https://finnhub.io/api/v1/stock/recommendation"
+           f"?symbol={urllib.parse.quote(ticker)}&token={k}")
+    if not is_fresh(url, 24 * 8):
+        if _RECO_BUDGET["left"] <= 0:
+            return []
+        _RECO_BUDGET["left"] -= 1
+        import time as _t
+        _t.sleep(1.1)
+    try:
+        return _parse_reco(fetch_json(url, ttl_hours=24 * 8, retries=0))
+    except (FetchError, TypeError):
+        return []
+
+
 def finnhub_surprise(ticker: str) -> dict | None:
     """EPS 서프라이즈 (Finnhub 무료 티어). 키 없으면 조용히 None —
     이 지표는 표시·진단용이지 점수 재료가 아니므로 결측이 판정을 바꾸지 않는다."""

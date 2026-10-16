@@ -18,6 +18,7 @@ from .sources import (
     edgar_fts,
     fedreg_signal,
     financials_snapshot,
+    finnhub_reco,
     finnhub_surprise,
     fred_series,
     quarterly_from_periods,
@@ -559,8 +560,38 @@ def evaluate_theme(theme: dict, tmap: dict, bench: list, series_cache: dict) -> 
                 _ppi[_k] = list(fred(fc[_key]))[-130:]
             except Exception:
                 pass
+    # 초기 신호 전용 — 선행 지표(themes.yaml early:), 내부자 장내 매수, 애널리스트 의견.
+    # 판정 점수에는 들어가지 않는다. 실패해도 그 신호만 빠진다.
+    _lead = []
+    for _it in theme.get("early") or []:
+        try:
+            _lead.append((_it["name"], list(fred(_it["id"]))[-130:]))
+        except Exception:
+            pass
+    _ins = []
+    try:
+        from datetime import date as _date
+
+        from .insider import RUN_BUDGET, live_buys, window
+        _b = []
+        for _t in tickers:
+            _cik = tmap.get(_t)
+            if _cik:
+                _b += live_buys(_t, int(_cik), budget=RUN_BUDGET)
+        _ins = window(_b, _date.today())
+    except Exception as _e:
+        res.notes.append(f"내부자 매수 미확보: {type(_e).__name__}")
+    _reco: dict = {}
+    for _t in tickers:
+        for _row in finnhub_reco(_t):
+            p = _reco.setdefault(_row["period"], [0, 0])
+            p[0] += _row["buy"]
+            p[1] += _row["total"]
     res.series = {
         **_ppi,
+        "lead": _lead,
+        "insider": _ins,
+        "reco": [(k, v[0], v[1]) for k, v in sorted(_reco.items())],
         "price_index": px.get("index", [])[-500:],
         "rev_yoy": group.get("rev_yoy_series", []),
         "capex_dep": group.get("capex_dep_series", []),

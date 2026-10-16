@@ -92,7 +92,7 @@ def _append_history(results) -> None:
     import json
     from datetime import date
 
-    from screener.dashboard import _verdict, priority, top_pick_rows
+    from screener.dashboard import _early_signals, _verdict, priority, top_pick_rows
 
     ranked = sorted(results, key=priority)
     entry = {
@@ -101,6 +101,8 @@ def _append_history(results) -> None:
                             "unp": round(r.unpriced_score or 0, 1),
                             "verdict": _verdict(r)[0]} for r in results},
         "picks": [s["ticker"] for _, _, _r, s, _t in top_pick_rows(ranked)],
+        # 초기 신호 켜짐/꺼짐 기록 — 'NEW' 배지와 '최근 신호 변화'의 재료
+        "early": {r.name: [n for n, _ in _early_signals(r)] for r in results},
     }
     p = ROOT / "reports" / "score_history.jsonl"
     p.parent.mkdir(exist_ok=True)
@@ -183,9 +185,24 @@ def main() -> int:
     # 무겁다). 있으면 함께 배포해 /backtest.html 로 열리게 한다.
     bt = ROOT / "reports" / "backtest.html"
     if bt.exists():
-        (OUT / "backtest.html").write_text(bt.read_text(encoding="utf-8"),
-                                           encoding="utf-8")
+        # 초기 신호 성적(early_signal_stats.json)은 따로 계산하므로 배포 때 끼워 넣는다
+        page = bt.read_text(encoding="utf-8")
+        try:
+            import json as _json
+
+            from screener.backtest_page import inject_early
+            est = ROOT / "reports" / "early_signal_stats.json"
+            if est.exists():
+                page = inject_early(page, _json.loads(est.read_text(encoding="utf-8")))
+        except Exception as e:
+            print(f"[주의] 초기 신호 성적 끼워 넣기 실패: {e}")
+        (OUT / "backtest.html").write_text(page, encoding="utf-8")
     _install_gate()
+    try:
+        from screener.insider import FETCH_BUDGET, RUN_BUDGET
+        print(f"Form 4 새로 읽음 {FETCH_BUDGET - RUN_BUDGET.left}건, 다음 실행으로 미룸 {RUN_BUDGET.skipped}건")
+    except Exception:
+        pass
     print(f"\n완료 ({time.time() - t0:.0f}초) → {out}")
 
     if not args.no_open:

@@ -286,6 +286,8 @@ themes:
     thesis: 착공은 눌려 있고 목재·용지 공급도 제약 — 수요가 돌면 즉시 병목
     catalysts: [재고, 공급]
     lead_time: 6~18M
+    early:
+      - {id: PERMIT, name: 건축 허가}
     # 체인: 빌더(DHI·LEN·PHM·NVR·TOL·KBH·MTH) → 자재 유통(BLDR)
     tickers: [DHI, LEN, PHM, NVR, TOL, KBH, MTH, BLDR]
     customers: {}              # 최종 고객이 가계라 상장 고객군이 없다
@@ -327,6 +329,8 @@ themes:
     thesis: 화물 침체 3년차 — 산업생산이 돌면 재입고 수요가 운임에 먼저 나타난다
     catalysts: [재고, 낙수]
     lead_time: 3~9M
+    early:
+      - {id: FRGSHPUSM649NCIS, name: Cass 화물 출하}
     tickers: [ODFL, SAIA, XPO, KNX, WERN, JBHT, CHRW]
     customers:
       tickers: [WMT, TGT, HD, LOW, AMZN]
@@ -343,6 +347,9 @@ themes:
     thesis: 인프라 예산 집행 + 장비 노후화. 교체 수요는 예측이 아니라 산수
     catalysts: [교체, 병목]
     lead_time: 12~24M
+    early:
+      - {id: NEWORDER, name: 핵심 자본재 수주}
+      - {id: TTLCONS, name: 건설 지출}
     tickers: [CAT, DE, TEX, AGCO, OSK, MTW]
     customers:
       tickers: [PWR, MTZ, GVA, ACM, J]
@@ -379,6 +386,8 @@ themes:
     thesis: 유가는 버티는데 시추 활동은 바닥 — 셰일 재고정(inventory) 소진으로 재가동 필요
     catalysts: [공급, 낙수]
     lead_time: 6~18M
+    early:      # 초기 신호 전용 선행 지표 — 판정 점수에는 안 들어간다
+      - {id: "eia:PET.E_ERTRR0_XR0_NUS_C.M", name: 시추 리그 수}
     # 체인: 통합 서비스(SLB·HAL·BKR) → 장비(NOV·WFRD)
     #      → 시추·완결(LBRT 프랙 / PTEN·HP 리그)
     # CHX 제거 — 2025 SLB 피인수로 상폐(CIK 조회로 확인)
@@ -543,6 +552,9 @@ themes:
     thesis: 인프라 예산 집행 + 지역 과점이라 운반거리 밖 경쟁이 없다 — 물량 회복분이 단가에 얹힌다
     catalysts: [정책, 마진]
     lead_time: 12~24M
+    early:
+      - {id: PERMIT, name: 건축 허가}
+      - {id: TTLCONS, name: 건설 지출}
     tickers: [MLM, VMC, EXP, KNF]
     customers:
       tickers: [PWR, MTZ, GVA, ACM]
@@ -593,6 +605,8 @@ themes:
     thesis: 리쇼어링 공장은 인력난 때문에 사람보다 자동화로 채워진다 — 착공→장비 발주의 시차 수혜
     catalysts: [낙수, 신기술]
     lead_time: 6~18M
+    early:
+      - {id: NEWORDER, name: 핵심 자본재 수주}
     tickers: [ROK, EMR, CGNX, NDSN]
     customers:
       tickers: [GM, F, TSLA, CAT, DE]

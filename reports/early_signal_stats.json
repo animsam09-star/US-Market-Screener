@@ -1,0 +1,375 @@
+{
+ "generated": "2026-10-16",
+ "period": [
+  "2010-01-31",
+  "2026-03-31"
+ ],
+ "split": "2019-01-01",
+ "rearm_months": 12,
+ "min_n": 8,
+ "base": {
+  "fwd12": {
+   "n": 5670,
+   "mean": 7.12,
+   "median": 1.59,
+   "hit": 52.2
+  },
+  "fwd6": {
+   "n": 5850,
+   "mean": 3.18,
+   "median": 1.01,
+   "hit": 52.3
+  },
+  "early": {
+   "n": 3240,
+   "mean": 2.07,
+   "median": 0.78,
+   "hit": 51.2
+  },
+  "late": {
+   "n": 2430,
+   "mean": 13.85,
+   "median": 2.92,
+   "hit": 53.5
+  },
+  "n_obs": 5850
+ },
+ "signals": {
+  "가동률 바닥 탈출": {
+   "n_events": 76,
+   "fwd12": {
+    "n": 70,
+    "mean": 10.6,
+    "median": 10.67,
+    "hit": 52.9
+   },
+   "fwd6": {
+    "n": 76,
+    "mean": 4.14,
+    "median": 1.28,
+    "hit": 55.3
+   },
+   "early": {
+    "n": 35,
+    "mean": 9.2,
+    "median": 11.28,
+    "hit": 57.1
+   },
+   "late": {
+    "n": 35,
+    "mean": 11.99,
+    "median": -1.55,
+    "hit": 48.6
+   },
+   "robust": false,
+   "grade": "조금 나음",
+   "themes": 18
+  },
+  "내부자 매수 집중": {
+   "n_events": 197,
+   "fwd12": {
+    "n": 191,
+    "mean": 6.79,
+    "median": 3.88,
+    "hit": 55.5
+   },
+   "fwd6": {
+    "n": 197,
+    "mean": 2.91,
+    "median": 0.84,
+    "hit": 51.8
+   },
+   "early": {
+    "n": 108,
+    "mean": 3.02,
+    "median": 3.91,
+    "hit": 57.4
+   },
+   "late": {
+    "n": 83,
+    "mean": 11.68,
+    "median": 3.74,
+    "hit": 53.0
+   },
+   "robust": false,
+   "grade": "평소와 비슷",
+   "themes": 28
+  },
+  "매출 가속 전환": {
+   "n_events": 82,
+   "fwd12": {
+    "n": 78,
+    "mean": 11.47,
+    "median": 4.4,
+    "hit": 53.8
+   },
+   "fwd6": {
+    "n": 82,
+    "mean": 0.57,
+    "median": 0.14,
+    "hit": 50.0
+   },
+   "early": {
+    "n": 36,
+    "mean": -3.29,
+    "median": 0.56,
+    "hit": 50.0
+   },
+   "late": {
+    "n": 42,
+    "mean": 24.12,
+    "median": 10.67,
+    "hit": 57.1
+   },
+   "robust": false,
+   "grade": "조금 나음",
+   "themes": 27
+  },
+  "생산·활동 반등": {
+   "n_events": 194,
+   "fwd12": {
+    "n": 185,
+    "mean": 13.79,
+    "median": 6.9,
+    "hit": 57.8
+   },
+   "fwd6": {
+    "n": 194,
+    "mean": 7.81,
+    "median": 2.86,
+    "hit": 55.7
+   },
+   "early": {
+    "n": 95,
+    "mean": 2.1,
+    "median": -1.91,
+    "hit": 49.5
+   },
+   "late": {
+    "n": 90,
+    "mean": 26.12,
+    "median": 14.05,
+    "hit": 66.7
+   },
+   "robust": true,
+   "grade": "조금 나음",
+   "themes": 30
+  },
+  "선행 지표 반등": {
+   "n_events": 39,
+   "fwd12": {
+    "n": 37,
+    "mean": 7.05,
+    "median": 5.27,
+    "hit": 62.2
+   },
+   "fwd6": {
+    "n": 39,
+    "mean": 6.09,
+    "median": 2.5,
+    "hit": 59.0
+   },
+   "early": {
+    "n": 21,
+    "mean": 0.52,
+    "median": -1.35,
+    "hit": 47.6
+   },
+   "late": {
+    "n": 16,
+    "mean": 15.62,
+    "median": 11.93,
+    "hit": 81.2
+   },
+   "robust": false,
+   "grade": "평소와 비슷",
+   "themes": 5
+  },
+  "수주 반등": {
+   "n_events": 93,
+   "fwd12": {
+    "n": 92,
+    "mean": 12.5,
+    "median": 3.78,
+    "hit": 57.6
+   },
+   "fwd6": {
+    "n": 93,
+    "mean": 8.79,
+    "median": 2.16,
+    "hit": 58.1
+   },
+   "early": {
+    "n": 57,
+    "mean": -1.24,
+    "median": -4.64,
+    "hit": 43.9
+   },
+   "late": {
+    "n": 35,
+    "mean": 34.87,
+    "median": 34.6,
+    "hit": 80.0
+   },
+   "robust": false,
+   "grade": "조금 나음",
+   "themes": 11
+  },
+  "신호 2개 이상 동시": {
+   "n_events": 273,
+   "fwd12": {
+    "n": 261,
+    "mean": 7.69,
+    "median": 2.57,
+    "hit": 54.8
+   },
+   "fwd6": {
+    "n": 273,
+    "mean": 2.84,
+    "median": 1.03,
+    "hit": 51.6
+   },
+   "early": {
+    "n": 145,
+    "mean": -0.5,
+    "median": -1.61,
+    "hit": 49.0
+   },
+   "late": {
+    "n": 116,
+    "mean": 17.93,
+    "median": 8.14,
+    "hit": 62.1
+   },
+   "robust": false,
+   "grade": "조금 나음",
+   "themes": 30
+  },
+  "원가 급락": {
+   "n_events": 115,
+   "fwd12": {
+    "n": 111,
+    "mean": 6.85,
+    "median": -1.34,
+    "hit": 48.6
+   },
+   "fwd6": {
+    "n": 115,
+    "mean": 0.76,
+    "median": -0.84,
+    "hit": 48.7
+   },
+   "early": {
+    "n": 57,
+    "mean": -0.14,
+    "median": -4.87,
+    "hit": 42.1
+   },
+   "late": {
+    "n": 54,
+    "mean": 14.22,
+    "median": 16.3,
+    "hit": 55.6
+   },
+   "robust": false,
+   "grade": "평소와 비슷",
+   "themes": 16
+  },
+  "재고 소진": {
+   "n_events": 41,
+   "fwd12": {
+    "n": 36,
+    "mean": 19.77,
+    "median": 11.64,
+    "hit": 66.7
+   },
+   "fwd6": {
+    "n": 41,
+    "mean": 16.15,
+    "median": 6.25,
+    "hit": 78.0
+   },
+   "early": {
+    "n": 18,
+    "mean": 4.71,
+    "median": 5.33,
+    "hit": 55.6
+   },
+   "late": {
+    "n": 18,
+    "mean": 34.82,
+    "median": 12.86,
+    "hit": 77.8
+   },
+   "robust": true,
+   "grade": "잘 맞았음",
+   "themes": 15
+  },
+  "주가 200일선 회복": {
+   "n_events": 301,
+   "fwd12": {
+    "n": 293,
+    "mean": 7.06,
+    "median": 0.85,
+    "hit": 51.5
+   },
+   "fwd6": {
+    "n": 301,
+    "mean": 3.05,
+    "median": 1.5,
+    "hit": 52.8
+   },
+   "early": {
+    "n": 154,
+    "mean": 2.08,
+    "median": 0.08,
+    "hit": 50.0
+   },
+   "late": {
+    "n": 139,
+    "mean": 12.58,
+    "median": 2.16,
+    "hit": 53.2
+   },
+   "robust": false,
+   "grade": "평소와 비슷",
+   "themes": 30
+  },
+  "판매가격 반등 시작": {
+   "n_events": 138,
+   "fwd12": {
+    "n": 132,
+    "mean": 7.9,
+    "median": -1.73,
+    "hit": 48.5
+   },
+   "fwd6": {
+    "n": 138,
+    "mean": 4.57,
+    "median": 0.07,
+    "hit": 50.0
+   },
+   "early": {
+    "n": 70,
+    "mean": 0.58,
+    "median": -7.52,
+    "hit": 42.9
+   },
+   "late": {
+    "n": 62,
+    "mean": 16.16,
+    "median": 3.28,
+    "hit": 54.8
+   },
+   "robust": false,
+   "grade": "평소와 비슷",
+   "themes": 16
+  }
+ },
+ "missing_series": {
+  "eia:PET.WPULEUS3.W": "eia:PET.WPULEUS3.W: EIA 키 없음 — PET.WPULEUS3.W 조회 불가 (환경변수 EIA_API_KEY 또는 eia_key.txt)",
+  "eia:PET.WGTSTUS1.W": "eia:PET.WGTSTUS1.W: EIA 키 없음 — PET.WGTSTUS1.W 조회 불가 (환경변수 EIA_API_KEY 또는 eia_key.txt)",
+  "eia:PET.WGFUPUS2.W": "eia:PET.WGFUPUS2.W: EIA 키 없음 — PET.WGFUPUS2.W 조회 불가 (환경변수 EIA_API_KEY 또는 eia_key.txt)",
+  "eia:PET.E_ERTRR0_XR0_NUS_C.M": "eia:PET.E_ERTRR0_XR0_NUS_C.M: EIA 키 없음 — PET.E_ERTRR0_XR0_NUS_C.M 조회 불가 (환경변수 EIA_API_KEY 또는 eia_key.txt)"
+ }
+}

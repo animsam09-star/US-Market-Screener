@@ -98,6 +98,12 @@ _DEAD_AFTER = 4          # 연속 4회 실패하면 그 호스트는 죽은 것�
 _dead: set[str] = set()
 
 
+def is_fresh(url: str, ttl_hours: float, json_body: object | None = None) -> bool:
+    """캐시가 ttl 안이면 True — 호출 예산(무료 API 분당 제한)을 셀 때 쓴다."""
+    cp = _cache_path(url, json_body)
+    return cp.exists() and (time.time() - cp.stat().st_mtime) < ttl_hours * 3600
+
+
 def host_status() -> dict[str, str]:
     """어느 호스트가 죽었는지. 실행 끝에 요약하기 위함."""
     return {h: "차단됨" for h in sorted(_dead)}

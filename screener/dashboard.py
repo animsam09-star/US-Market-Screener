@@ -394,6 +394,10 @@ def _load_report_json(name: str):
 # 확률 진술이다 — 그 확률을 화면에 숫자로 보여준다("이 승률들도 써주고").
 VERDICT_STATS: dict = _load_report_json("verdict_stats.json") or {}
 BT_RECORDS: list = _load_report_json("backtest_records.json") or []
+# 초기 신호 적중 기록(python -m screener.early_backtest) — 신호별 과거 성적·사건 원장.
+# "검증 전"이라고만 쓰면 어느 신호를 믿을지 모른다 → 신호마다 과거 숫자를 붙인다.
+EARLY_STATS: dict = _load_report_json("early_signal_stats.json") or {}
+EARLY_EVENTS: list = _load_report_json("early_signal_events.json") or []
 _POSITIVE_TAGS = ("볼 만함", "지켜볼 만")
 _LOW_TAGS = ("이유 약함", "지금은 아님", "판정 불가", "되돌림")
 
@@ -725,6 +729,37 @@ def _early_signals(r: ThemeResult) -> list[tuple[str, str]]:
         if a - b >= 2 and b <= c:
             out.append(("매출 가속 전환",
                         f"매출 증가율 {b:+.0f}% → {a:+.0f}% — 둔화하다 다시 빨라짐"))
+    # 더 앞서 움직이는 자료(themes.yaml early:) — 건축 허가·핵심 자본재 수주·리그 수 등
+    hits = []
+    for nm_, ser in S_.get("lead") or []:
+        mv = _mvals(ser)
+        if len(mv) >= 9:
+            v = [x for _, x in mv]
+            a, b, c = sum(v[-3:]) / 3, sum(v[-6:-3]) / 3, sum(v[-9:-6]) / 3
+            if b and c and a > b * 1.02 and b <= c:
+                hits.append(f"{nm_} {(a / b - 1) * 100:+.0f}%")
+    if hits:
+        out.append(("선행 지표 반등",
+                    f"{', '.join(hits)} — 최근 3개월 평균이 직전 3개월보다 늘어, 줄던 흐름이 돌아섰습니다"))
+    # 내부자 장내 매수 — 임원·이사가 자기 돈으로 산 것(SEC Form 4, 코드 P)
+    ins = S_.get("insider") or []
+    if ins:
+        from .insider import summarize
+        sm_ = summarize(ins)
+        multi = [t for t, c in sm_["per_company"].items() if c >= 3]
+        if len(sm_["companies"]) >= 2 or multi:
+            who = ", ".join(f"{t} {sm_['per_company'][t]}명" for t in sm_["companies"][:5])
+            out.append(("내부자 매수 집중",
+                        f"최근 90일 {who}이 자기 돈으로 장내 매수 "
+                        f"(합계 약 {sm_['value'] / 1e4:,.0f}만 달러)"))
+    # 애널리스트 매수 의견 비중 상승(Finnhub 월별 추천 추이)
+    rc = S_.get("reco") or []
+    if len(rc) >= 4 and rc[-1][2] >= 10 and rc[-4][2] >= 10:
+        a = 100.0 * rc[-1][1] / rc[-1][2]
+        b = 100.0 * rc[-4][1] / rc[-4][2]
+        if a - b >= 5:
+            out.append(("애널리스트 매수 의견 증가",
+                        f"매수 의견 비중 {b:.0f}% → {a:.0f}% (3개월, 의견 {rc[-1][2]}건)"))
     px = [v for _, v in (S_.get("price_index") or []) if v is not None]
     if len(px) >= 230:
         ma = [sum(px[i - 199:i + 1]) / 200 for i in range(len(px) - 30, len(px))]
@@ -738,36 +773,176 @@ def _early_signals(r: ThemeResult) -> list[tuple[str, str]]:
     return out
 
 
-def _early_html(r: ThemeResult) -> str:
+NEW_B = "<b class='new'>NEW</b>"
+_GRADE_W = {"잘 맞았음": 3, "조금 나음": 2, "평소와 비슷": 1, "기록 적음": 1}
+_GRADE_CLS = {"잘 맞았음": "er-good", "조금 나음": "er-ok", "평소와 비슷": "er-flat",
+              "기록 적음": "er-few"}
+
+
+def _early_stat(name: str) -> dict | None:
+    return (EARLY_STATS.get("signals") or {}).get(name)
+
+
+def _early_grade(name: str) -> str:
+    s_ = _early_stat(name)
+    return s_["grade"] if s_ and s_.get("fwd12") else "기록 없음"
+
+
+def _early_rec(name: str) -> str:
+    """신호 옆 과거 성적 한 줄 — '과거 N번 켜짐 → 1년 뒤 시장보다 더 오른 비율 x% (평소 y%)'."""
+    s_ = _early_stat(name)
+    base = ((EARLY_STATS.get("base") or {}).get("fwd12")) or {}
+    if not s_ or not s_.get("fwd12") or not base:
+        return ("<span class='er er-none'>과거 기록 없음 — 오늘부터 쌓습니다</span>")
+    f = s_["fwd12"]
+    g = s_["grade"]
+    return (f"<span class='er {_GRADE_CLS.get(g, 'er-few')}'>{_e(g)}</span>"
+            f"<span class='er-t'>과거 {s_['n_events']}번 켜짐 → 1년 뒤 시장보다 더 오른 비율 "
+            f"<b>{f['hit']:.0f}%</b> (평소 {base['hit']:.0f}%), 평균 {f['mean']:+.0f}%p</span>")
+
+
+def _early_last(theme: str, name: str) -> str:
+    ev = [e for e in EARLY_EVENTS if e.get("theme") == theme and e.get("signal") == name]
+    if not ev:
+        return ""
+    e = ev[-1]
+    if e.get("fwd12") is not None:
+        res = f"1년 뒤 시장 대비 {e['fwd12']:+.0f}%p"
+    elif e.get("fwd6") is not None:
+        res = f"6개월 뒤 시장 대비 {e['fwd6']:+.0f}%p (1년 결과 전)"
+    else:
+        res = "결과 집계 전"
+    return f"<span class='er-last'>이 테마 지난번: {_ym(e['date'][:7])} 켜짐 → {res}</span>"
+
+
+_TL_CACHE: dict = {}
+
+
+def _early_timeline() -> dict:
+    """이력(score_history.jsonl 의 early)으로 신호별 '켜진 날'과 최근 변화를 만든다.
+
+    반환: {"since": {(테마, 신호): 날짜}, "base": 기록 시작일, "log": [(날짜, 테마, 신호, on/off)],
+           "today": 마지막 기록일}. 기록 시작일에 이미 켜져 있던 것은 '언제 켜졌는지 모름'.
+    """
+    if _TL_CACHE:
+        return _TL_CACHE
+    hs = [h for h in load_history() if isinstance(h.get("early"), dict)]
+    since: dict = {}
+    log: list = []
+    prev: dict = {}
+    for i, h in enumerate(hs):
+        cur = h["early"]
+        for th, names in cur.items():
+            for n in names:
+                if n not in (prev.get(th) or []):
+                    since[(th, n)] = h["date"]
+                    if i:
+                        log.append((h["date"], th, n, "on"))
+            if th in prev:
+                for n in prev[th]:
+                    if n not in names:
+                        since.pop((th, n), None)
+                        log.append((h["date"], th, n, "off"))
+        prev = {**prev, **cur}
+    _TL_CACHE.update({"since": since, "base": hs[0]["date"] if hs else None,
+                      "log": log, "today": hs[-1]["date"] if hs else None})
+    return _TL_CACHE
+
+
+def _early_age(theme: str, name: str) -> tuple[str, bool]:
+    """(표시 문구, 새로 켜졌나). 새로 = 기록 시작 뒤에 켜졌고 7일 이내."""
+    from datetime import date as _d
+    tl = _early_timeline()
+    since = tl["since"].get((theme, name))
+    if not since or not tl["today"]:
+        return "", False
+    if since == tl["base"]:
+        return "", False
+    days = (_d.fromisoformat(tl["today"]) - _d.fromisoformat(since)).days
+    if days <= 7:
+        return f"<b class='new'>NEW</b><span class='er-age'>{int(since[5:7])}/{int(since[8:10])} 켜짐</span>", True
+    return f"<span class='er-age'>켜진 지 {days}일</span>", False
+
+
+def _early_sorted(r: ThemeResult) -> list[tuple[str, str]]:
     sig = _early_signals(r)
+    return sorted(sig, key=lambda x: (-_early_age(r.name, x[0])[1],
+                                      -_GRADE_W.get(_early_grade(x[0]), 0)))
+
+
+def _early_html(r: ThemeResult) -> str:
+    sig = _early_sorted(r)
     if not sig:
         return ""
+    lis = []
+    for n, d in sig:
+        age, _new = _early_age(r.name, n)
+        lis.append(f"<li><div class='el-h'><b>{_e(n)}</b>{age}</div>"
+                   f"<div class='el-d'>{_e(d)}</div>"
+                   f"<div class='el-r'>{_early_rec(n)}{_early_last(r.name, n)}</div></li>")
     return ("<div class='early'><div class='early-h'>초기 신호 "
-            f"<b>{len(sig)}</b><span>아직 검증 안 된, 방향이 바뀌는 순간 — 틀릴 수 있지만 먼저 보이는 것</span></div><ul>"
-            + "".join(f"<li><b>{_e(n)}</b> {_e(d)}</li>" for n, d in sig) + "</ul></div>")
+            f"<b>{len(sig)}</b><span>방향이 바뀌는 순간 — 틀릴 수 있지만 먼저 보이는 것. "
+            "옆 숫자는 과거에 같은 신호가 켜졌을 때의 성적</span></div><ul>"
+            + "".join(lis) + "</ul></div>")
+
+
+def _early_log_html() -> str:
+    tl = _early_timeline()
+    if not tl["base"]:
+        return ""
+    from datetime import date as _d, timedelta as _td
+    lo = (_d.fromisoformat(tl["today"]) - _td(days=30)).isoformat()
+    rows = [x for x in tl["log"] if x[0] >= lo][-14:][::-1]
+    if not rows:
+        return ("<p class='eb-log-empty'>최근 신호 변화: 아직 없음 — "
+                f"{int(tl['base'][5:7])}/{int(tl['base'][8:10])}부터 기록 중이며, "
+                "새로 켜지거나 꺼진 신호가 생기면 여기 날짜순으로 쌓입니다.</p>")
+    lis = "".join(
+        f"<li><span class='lg-d'>{int(d[5:7])}/{int(d[8:10])}</span>"
+        f"<span class='lg-{'on' if k == 'on' else 'off'}'>{'켜짐' if k == 'on' else '꺼짐'}</span>"
+        f"<b>{_e(th)}</b> {_e(n)}</li>" for d, th, n, k in rows)
+    return f"<div class='eb-log'><h3>최근 30일 신호 변화</h3><ul>{lis}</ul></div>"
 
 
 def _early_board(ranked: list[ThemeResult]) -> str:
-    """한눈에 상단 — 판정과 무관하게 초기 신호가 켜진 테마."""
+    """한눈에 상단 — 판정과 무관하게 초기 신호가 켜진 테마. 새로 켜진 것·과거에 잘 맞은 것 먼저."""
     rows = []
     for i, r in enumerate(ranked, 1):
-        sig = _early_signals(r)
+        sig = _early_sorted(r)
         if sig:
-            rows.append((len(sig), r.catalyst_score or 0, i, r, sig))
+            nnew = sum(1 for n, _ in sig if _early_age(r.name, n)[1])
+            w = sum(_GRADE_W.get(_early_grade(n), 0) for n, _ in sig)
+            rows.append((nnew, w, len(sig), r.catalyst_score or 0, i, r, sig))
+    base = ((EARLY_STATS.get("base") or {}).get("fwd12")) or {}
+    period = EARLY_STATS.get("period") or []
+    rec_note = ""
+    if base and period and period[0]:
+        rec_note = (f" 신호별 과거 성적은 {period[0][:4]}년부터 매달 다시 계산한 것 — 아무 때나 골랐을 때 "
+                    f"1년 뒤 시장보다 더 오른 비율은 {base['hit']:.0f}%입니다(이보다 높아야 쓸모 있는 신호).")
     if not rows:
         return ("<section class='tv-card eb'><p class='nodata'>지금 방향이 바뀌는 "
-                "초기 신호가 켜진 테마가 없습니다.</p></section>")
-    rows.sort(key=lambda x: (-x[0], -x[1]))
+                "초기 신호가 켜진 테마가 없습니다.</p>" + _early_log_html() + "</section>")
+    rows.sort(key=lambda x: (-x[0], -x[1], -x[2], -x[3]))
     items = []
-    for n, _c, i, r, sig in rows[:12]:
+    for nnew, _w, n, _c, i, r, sig in rows[:12]:
         tag, cls, _t = _verdict(r)
+        chips = ""
+        for nm, _ in sig:
+            nb = NEW_B if _early_age(r.name, nm)[1] else ""
+            gc = _GRADE_CLS.get(_early_grade(nm), "er-none")
+            chips += f"<span class='es {gc}'>{nb}{_e(nm)}</span>"
         items.append(
             f"<a class='eb-row' href='#t{i}'><span class='eb-n'>{n}</span>"
             f"<span class='eb-nm'><b>{_e(r.name)}</b><span class='tv-chip'>{_e(tag)}</span></span>"
-            f"<span class='eb-sig'>{_e(' · '.join(s_[0] for s_ in sig))}</span></a>")
+            f"<span class='eb-sig'>{chips}</span></a>")
+    legend = ("<p class='eb-leg'><span class='es er-good'>잘 맞았음</span>"
+              "<span class='es er-ok'>조금 나음</span><span class='es er-flat'>평소와 비슷</span>"
+              "<span class='es er-few'>기록 적음</span><span class='es er-none'>기록 없음</span>"
+              " — 같은 신호가 과거에 켜졌을 때의 성적</p>")
     return ("<section class='tv-card eb'><p class='eb-note'>판정과 상관없이, 데이터의 방향이 막 "
-            "바뀐 테마입니다. 검증되지 않은 초기 신호라 틀릴 수 있습니다 — 먼저 보고 판단하시라고 "
-            "올립니다. 숫자 = 켜진 신호 개수.</p>" + "".join(items) + "</section>")
+            "바뀐 테마입니다. 틀릴 수 있지만 먼저 보고 판단하시라고 올립니다. 숫자 = 켜진 신호 개수, "
+            "NEW = 최근 7일 안에 새로 켜짐." + rec_note + "</p>" + legend
+            + "".join(items) + _early_log_html() + "</section>")
 
 
 def _flow_analysis(r: ThemeResult, tag: str) -> str:
@@ -1533,7 +1708,33 @@ CSS = """
 .eb-n{width:28px;height:28px;border-radius:50%;background:#f0a13a;color:#fff;font-weight:800;
  display:flex;align-items:center;justify-content:center}
 .eb-nm{display:flex;flex-direction:column;gap:3px}.eb-nm b{font-size:15px;color:var(--text-primary)}
-.eb-sig{font-size:14px;color:var(--text-secondary)}
+.eb-sig{font-size:14px;color:var(--text-secondary);display:flex;flex-wrap:wrap;gap:6px}
+.es{display:inline-flex;align-items:center;gap:5px;padding:3px 9px;border-radius:999px;font-size:13px;
+ border:1px solid var(--tv-line);color:var(--text-primary)}
+.es.er-good{border-color:#2e9e6b;background:rgba(46,158,107,.14)}
+.es.er-ok{border-color:#5b8def;background:rgba(91,141,239,.12)}
+.es.er-flat,.es.er-few,.es.er-none{color:var(--text-secondary)}
+.es.er-none{border-style:dashed}
+.new{background:#e5484d;color:#fff;font-size:10.5px;font-weight:800;padding:1px 6px;border-radius:4px;
+ letter-spacing:.04em}
+.eb-leg{font-size:12.5px;color:var(--muted);margin:2px 0 8px;display:flex;flex-wrap:wrap;gap:6px;align-items:center}
+.eb-leg .es{font-size:12px;padding:1px 8px}
+.eb-log{margin-top:12px;padding-top:10px;border-top:1px solid var(--tv-line)}
+.eb-log h3{font-size:14px;margin:0 0 6px;color:var(--text-primary)}
+.eb-log ul{list-style:none;margin:0;padding:0;display:grid;gap:4px;font-size:13.5px}
+.eb-log li{display:flex;gap:8px;align-items:center}
+.lg-d{color:var(--muted);width:42px;font-variant-numeric:tabular-nums}
+.lg-on,.lg-off{font-size:12px;font-weight:700;padding:1px 7px;border-radius:4px}
+.lg-on{background:rgba(46,158,107,.16);color:#2e9e6b}.lg-off{background:rgba(128,128,128,.15);color:var(--muted)}
+.eb-log-empty{font-size:12.5px;color:var(--muted);margin:10px 0 0}
+.early li{margin:6px 0}.el-h{display:flex;gap:7px;align-items:center;flex-wrap:wrap}
+.el-d{color:var(--text-secondary)}
+.el-r{display:flex;flex-wrap:wrap;gap:4px 10px;align-items:center;font-size:12.5px;margin-top:2px}
+.er{font-size:11.5px;font-weight:700;padding:1px 7px;border-radius:4px;border:1px solid var(--tv-line)}
+.er.er-good{color:#2e9e6b;border-color:#2e9e6b}.er.er-ok{color:#5b8def;border-color:#5b8def}
+.er.er-flat,.er.er-few,.er.er-none{color:var(--muted)}.er.er-none{border-style:dashed}
+.er-t{color:var(--text-secondary)}.er-t b{color:var(--text-primary)}
+.er-last,.er-age{color:var(--muted);font-size:12px}
 @media (max-width:760px){.eb-row{grid-template-columns:34px 1fr}.eb-sig{grid-column:2}}
 /* ---- TradingView 톤: 검은 바탕·얇은 테두리·초록/빨강 등락 ---- */
 .viz-root{--tv-up:#089981;--tv-dn:#f23645;--tv-link:#2962ff;--tv-card:#ffffff;
@@ -2015,6 +2216,11 @@ def build_html(results: list[ThemeResult], *, benchmark: str = "SPY") -> str:
                    if (r.catalyst_score or 0) >= 50 and (r.unpriced_score or 0) >= 50)
 
     cards = "".join(_card(r, i) for i, r in enumerate(ranked, 1))
+    # 새 자료가 실제로 들어왔는지 — 키가 시크릿에만 있어 로컬에서 확인할 수 없는 것
+    # (Finnhub 애널리스트 의견·EIA 리그 수)을 배포본에서 확인하는 표식. 화면에는 안 보인다.
+    _dstat = (f"<!-- early-data: reco={sum(1 for r in ranked if r.series.get('reco'))} "
+              f"insider={sum(len(r.series.get('insider') or []) for r in ranked)} "
+              f"lead={sum(len(r.series.get('lead') or []) for r in ranked)} -->")
 
     # 판독 건강도 — 데이터가 통째로 안 들어온 것을 조용히 넘기지 않는다.
     # 주가가 죽으면 미반영 축 4개 중 2개가 사라지는데, 점수만 보면 눈치채기 어렵다.
@@ -2060,7 +2266,7 @@ def build_html(results: list[ThemeResult], *, benchmark: str = "SPY") -> str:
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>미국 섹터 스크리너 — 촉매 × 미반영</title>
 <style>{CSS}</style><style>{DETAIL_CSS}</style><script>{THEME_JS}</script></head>
-<body><div class="viz-root"><div class="wrap">
+<body><div class="viz-root"><div class="wrap">{_dstat}
 <button class="toggle" id="themeBtn">라이트/다크</button>
 
 <h1>미국 섹터 스크리너</h1>

@@ -1472,6 +1472,126 @@ def f30_penetration_units():
     check("F30 100% 아님", pen[-1][1] < 95, f"{pen[-1][1]:.1f}")
 
 
+# ---------------------------------------------------------------- F52
+def f52_early_record_and_new_data():
+    """초기 신호 2차 — 과거 적중 기록·NEW·새 자료 3종(2026-10-16 "다 해주고").
+
+    ①적중 기록: 백테스트가 운영과 같은 시계열 대응표를 쓰는지, '켜짐' 사건을
+    12개월 재점등 제외로 세는지 ②NEW: 기록 시작일에 이미 켜져 있던 신호는 NEW 가
+    아니다(언제 켜졌는지 모름) ③내부자 매수: 매도·보상 지급·대주주(펀드)만은 빼고
+    임원·이사의 장내 매수(P)만 ④선행 지표·애널리스트 의견 규칙.
+    """
+    import re
+    from datetime import date, timedelta
+    import screener.dashboard as db
+    import screener.early_backtest as eb
+    from screener.insider import parse_form4, summarize, window
+    from screener.signals import ThemeResult
+    ROOT = Path(__file__).resolve().parent.parent
+
+    src = (ROOT / "screener" / "signals.py").read_text(encoding="utf-8")
+    pairs = set(re.findall(r'\("(\w+)", "(\w+)"\)', src[src.index("_ppi = {}"):]))
+    check("F52 백테스트·운영 시계열 대응표 동일", set(eb.SERIES_KEYS) <= pairs,
+          str(set(eb.SERIES_KEYS) - pairs))
+
+    def rec(d, on, f=10.0):
+        return {"date": d, "theme": "A", "on": on, "fwd6": f, "fwd12": f}
+    recs = [rec("2015-01-31", []), rec("2015-02-28", ["X"]), rec("2015-03-31", ["X"]),
+            rec("2015-04-30", []), rec("2015-05-31", ["X"]),            # 3개월 만의 재점등 → 무시
+            rec("2016-06-30", []), rec("2016-07-31", ["X", "Y"])]       # 17개월 뒤 → 새 사건
+    ev = eb.events(recs)
+    xs = [e["date"] for e in ev if e["signal"] == "X"]
+    check("F52 사건: 지난달 꺼짐→켜짐만, 12개월 재점등 제외", xs == ["2015-02-28", "2016-07-31"], str(xs))
+    check("F52 사건: 신호 2개 동시", any(e["signal"] == eb.COMBO for e in ev), str(ev))
+    base = {"n": 100, "mean": 0.0, "hit": 50.0}
+    check("F52 등급", eb.grade({"n": 20, "mean": 5.0, "hit": 62.0}, base, True) == "잘 맞았음"
+          and eb.grade({"n": 20, "mean": 5.0, "hit": 62.0}, base, False) == "조금 나음"
+          and eb.grade({"n": 5, "mean": 9.0, "hit": 90.0}, base, True) == "기록 적음"
+          and eb.grade({"n": 20, "mean": -1.0, "hit": 45.0}, base, True) == "평소와 비슷", "")
+
+    def f4(role_xml, code, ad, sh, pr):
+        return ("<ownershipDocument><rptOwnerName>Kim</rptOwnerName>" + role_xml +
+                "<nonDerivativeTransaction><transactionCode>" + code + "</transactionCode>"
+                "<transactionShares><value>" + sh + "</value></transactionShares>"
+                "<transactionPricePerShare><value>" + pr + "</value></transactionPricePerShare>"
+                "<transactionAcquiredDisposedCode><value>" + ad + "</value>"
+                "</transactionAcquiredDisposedCode></nonDerivativeTransaction></ownershipDocument>")
+    off = "<isOfficer>1</isOfficer><officerTitle>CFO</officerTitle>"
+    check("F52 Form4: 임원 장내 매수", parse_form4(f4(off, "P", "A", "1000", "30"))[0]["value"] == 30000, "")
+    check("F52 Form4: 매도·보상 제외", parse_form4(f4(off, "S", "D", "1000", "30")) == []
+          and parse_form4(f4(off, "A", "A", "1000", "0")) == [], "")
+    check("F52 Form4: 10% 대주주만은 제외",
+          parse_form4(f4("<isTenPercentOwner>1</isTenPercentOwner>", "P", "A", "9", "9")) == [], "")
+    buys = [{"date": "2026-09-01", "ticker": "AA", "owner": "a", "value": 30000},
+            {"date": "2026-09-02", "ticker": "BB", "owner": "b", "value": 40000},
+            {"date": "2026-09-03", "ticker": "BB", "owner": "c", "value": 5000},     # 상징적 매수
+            {"date": "2026-01-01", "ticker": "CC", "owner": "d", "value": 900000}]   # 창 밖
+    w = window(buys, date(2026, 10, 1))
+    sm = summarize(w)
+    check("F52 내부자: 90일 창·소액 제외", sm["companies"] == ["AA", "BB"] and sm["insiders"] == 2, str(sm))
+
+    def mser(vals, y=2024):
+        return [(f"{y + (i // 12)}-{i % 12 + 1:02d}-01", v) for i, v in enumerate(vals)]
+    r = ThemeResult(name="T", thesis="", tickers=["AA"])
+    r.series = {"lead": [("건축 허가", mser([100, 99, 98, 97, 96, 95, 99, 102, 104]))],
+                "insider": w, "reco": [("2026-06", 10, 30), ("2026-07", 11, 30),
+                                       ("2026-08", 12, 30), ("2026-09", 15, 30)]}
+    names = [n for n, _ in db._early_signals(r)]
+    for want in ("선행 지표 반등", "내부자 매수 집중", "애널리스트 매수 의견 증가"):
+        check(f"F52 신호: {want}", want in names, str(names))
+    q = ThemeResult(name="U", thesis="", tickers=["AA"])
+    q.series = {"insider": [buys[0]], "reco": [("2026-06", 1, 3), ("2026-07", 1, 3),
+                                               ("2026-08", 1, 3), ("2026-09", 3, 3)]}
+    check("F52 한 회사 1명·의견 수 적음은 침묵", db._early_signals(q) == [], str(db._early_signals(q)))
+
+    # NEW — 기록 시작일에 이미 켜져 있던 것은 NEW 아님, 기록 뒤 켜진 것만
+    hist = [{"date": "2026-10-01", "early": {"T": ["판매가격 반등 시작"]}},
+            {"date": "2026-10-08", "early": {"T": ["판매가격 반등 시작", "원가 급락"]}},
+            {"date": "2026-10-14", "early": {"T": ["원가 급락", "선행 지표 반등"]}}]
+    old_lh, old_st = db.load_history, dict(db.EARLY_STATS)
+    try:
+        db.load_history = lambda: hist
+        db._TL_CACHE.clear()
+        a1, n1 = db._early_age("T", "선행 지표 반등")
+        a2, n2 = db._early_age("T", "원가 급락")
+        check("F52 NEW: 최근 7일 안에 켜짐", n1 and "10/14" in a1, a1)
+        check("F52 NEW 아님: 6일 전 켜짐도 7일 안이면 NEW, 기록 시작 전부터면 아님",
+              n2, a2)
+        tl = db._early_timeline()
+        check("F52 신호 변화 기록: 꺼짐도 남는다",
+              ("2026-10-14", "T", "판매가격 반등 시작", "off") in tl["log"], str(tl["log"]))
+        db._TL_CACHE.clear()
+        db.load_history = lambda: hist[:1]
+        check("F52 기록 시작일 신호는 NEW 아님", not db._early_age("T", "판매가격 반등 시작")[1], "")
+        db.EARLY_STATS.clear()
+        db.EARLY_STATS.update({"base": {"fwd12": {"n": 900, "mean": 1.0, "hit": 48.0}},
+                               "period": ["2010-01-31", "2026-03-31"],
+                               "signals": {"원가 급락": {"n_events": 23, "grade": "조금 나음",
+                                                     "fwd12": {"n": 23, "mean": 4.2, "hit": 61.0}}}})
+        h = db._early_rec("원가 급락")
+        check("F52 적중 기록 문구", "과거 23번 켜짐" in h and "61%" in h and "평소 48%" in h, h)
+        check("F52 기록 없는 신호는 정직하게", "과거 기록 없음" in db._early_rec("내부자 매수 집중"), "")
+    finally:
+        db.load_history = old_lh
+        db.EARLY_STATS.clear()
+        db.EARLY_STATS.update(old_st)
+        db._TL_CACHE.clear()
+
+    import yaml
+    cfg = yaml.safe_load((ROOT / "themes.yaml").read_text(encoding="utf-8"))
+    ok = all(it.get("id") and it.get("name") for th in cfg["themes"] for it in (th.get("early") or []))
+    check("F52 themes.yaml early: id·name 필수", ok, "")
+
+    from screener.backtest_page import inject_early
+    st = {"base": {"fwd12": {"n": 900, "mean": 1.0, "hit": 48.0}}, "period": ["2010-01-31", "x"],
+          "signals": {"원가 급락": {"n_events": 23, "grade": "조금 나음",
+                                "fwd12": {"n": 23, "mean": 4.2, "hit": 61.0}}}}
+    pg = inject_early("<p>a</p><h2>주의할 점</h2><p>b</p>", st)
+    check("F52 백테스트 페이지: 초기 신호 성적 끼움",
+          "초기 신호는 맞았나" in pg and pg.index("초기 신호는 맞았나") < pg.index("주의할 점")
+          and "61%" in pg and inject_early(pg, st) == pg, pg[:200])
+
+
 # ---------------------------------------------------------------- F51
 def f51_early_signals():
     """초기 신호 — '미리 아는 게 최우선, 틀려도 된다'(사용자, 2026-10-16).
@@ -1516,7 +1636,7 @@ def f51_early_signals():
     check("F51 꾸준한 상승·미세 변화는 침묵", db._early_signals(q) == [],
           str(db._early_signals(q)))
     h = db._early_board([r, q])
-    check("F51 보드: 검증 전 라벨", "검증되지 않은 초기 신호" in h and "X" in h, "")
+    check("F51 보드: 틀릴 수 있다는 라벨", "틀릴 수 있지만" in h and "X" in h, "")
 
 
 # ---------------------------------------------------------------- F50
@@ -1688,7 +1808,8 @@ def main() -> int:
                f38_why_flat_diagnosis, f39_week_changes, f40_earnings_link,
                f41_pead_point_in_time, f42_price_snapshot_fallback,
                f43_sample_window, f44_stable_axis_gate, f45_stable_axes_self_update, f46_theme_schema, f47_dashboard_tabs_and_honesty,
-               f48_stock_detail_window, f49_backtest_easy_page, f50_flow_analysis, f51_early_signals]:
+               f48_stock_detail_window, f49_backtest_easy_page, f50_flow_analysis, f51_early_signals,
+               f52_early_record_and_new_data]:
         try:
             fn()
         except Exception as e:

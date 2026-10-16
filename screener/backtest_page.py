@@ -308,3 +308,57 @@ details h4{{margin:22px 0 6px}}details p{{margin:4px 0;font-size:14px;color:var(
 </details>
 </div></body></html>
 """
+
+
+# ================================================================ 초기 신호 성적
+
+_EARLY_TAG = {"잘 맞았음": "good", "조금 나음": "warn", "평소와 비슷": "na", "기록 적음": "na"}
+EARLY_ANCHOR = "<h2>주의할 점</h2>"
+
+
+def early_section(st: dict | None) -> str:
+    """초기 신호(방향이 바뀌는 순간)별 과거 성적 — screener.early_backtest 결과.
+
+    판정 백테스트(분기)와 따로 계산한다: 신호는 매달 다시 계산하고, 지난달 꺼져 있다가
+    켜진 달만 '켜짐'으로 센다. 같은 신호가 12개월 안에 다시 켜지면 한 번만 센다.
+    """
+    if not st or not st.get("signals"):
+        return ""
+    base = (st.get("base") or {}).get("fwd12") or {}
+    per = st.get("period") or ["", ""]
+    rows = []
+    items = sorted(st["signals"].items(),
+                   key=lambda kv: -((kv[1].get("fwd12") or {}).get("hit") or -1))
+    for name, d in items:
+        f = d.get("fwd12") or {}
+        if not f:
+            continue
+        g = d.get("grade", "기록 적음")
+        e, l_ = d.get("early") or {}, d.get("late") or {}
+        era = (f"{e.get('hit', 0):.0f}% / {l_.get('hit', 0):.0f}%"
+               if e and l_ else "—")
+        rows.append(
+            f"<tr><td><b>{_e(name)}</b></td><td>{d['n_events']}번</td>"
+            f"<td><b>{f['hit']:.0f}%</b></td><td>{f['mean']:+.1f}%p</td><td>{era}</td>"
+            f"<td><span class=\"tag {_EARLY_TAG.get(g, 'na')}\">{_e(g)}</span></td></tr>")
+    if not rows:
+        return ""
+    return (f"<h2>초기 신호는 맞았나 — 방향이 바뀌는 순간</h2>"
+            f"<div class=\"card\"><p style=\"margin:0 0 10px\">대시보드 위쪽 ‘먼저 보이는 가능성’에 뜨는 "
+            f"신호들입니다. {_e((per[0] or '')[:4])}년부터 매달 그때 알 수 있던 자료로 다시 계산해, "
+            f"신호가 <b>새로 켜진 달</b>부터 1년 동안 그 테마가 시장보다 더 올랐는지 셌습니다. "
+            f"아무 때나 골랐을 때 더 오른 비율은 <b>{base.get('hit', 0):.0f}%</b>"
+            f"(평균 {base.get('mean', 0):+.1f}%p) — 이보다 높아야 쓸모 있는 신호입니다.</p>"
+            f"<table class=\"raw\"><tr><th>신호</th><th>켜진 횟수</th><th>시장보다 더 오른 비율</th>"
+            f"<th>평균(시장 대비)</th><th>2019년 전 / 후</th><th>판단</th></tr>{''.join(rows)}</table>"
+            f"<p class=\"meta\" style=\"margin:8px 0 0\">‘잘 맞았음’ = 평소보다 더 오른 비율이 8%p 이상 높고, "
+            f"2019년 전·후 두 시기 모두 평소보다 나았던 것. 켜진 횟수 8번 미만은 ‘기록 적음’. "
+            f"같은 신호가 12개월 안에 다시 켜지면 한 번만 셌습니다. 내부자 매수는 SEC 일괄 자료"
+            f"(2009년~), 애널리스트 의견은 과거 자료가 없어 오늘부터 기록합니다.</p></div>\n")
+
+
+def inject_early(page: str, st: dict | None) -> str:
+    sec = early_section(st)
+    if not sec or EARLY_ANCHOR not in page or "초기 신호는 맞았나" in page:
+        return page
+    return page.replace(EARLY_ANCHOR, sec + EARLY_ANCHOR, 1)
