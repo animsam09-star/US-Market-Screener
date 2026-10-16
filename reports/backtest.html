@@ -2,110 +2,152 @@
 <html lang="ko"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>백테스트 결과 — 미국 섹터 스크리너</title>
+<script>(function(){var t='dark';try{t=localStorage.getItem('scr-theme')||'dark'}catch(e){}
+document.documentElement.dataset.theme=t})();</script>
 <style>
-body{font-family:Pretendard,-apple-system,'Malgun Gothic',sans-serif;
-max-width:860px;margin:40px auto;padding:0 20px;line-height:1.65;
-color:#2b2b33;background:#faf9f7}
-pre{white-space:pre-wrap;font:inherit}
-a{color:#1c3d6e}
-</style></head><body>
+:root{--bg:#fff;--card:#fff;--line:#e0e3eb;--tx:#131722;--sub:#5d606b;--mut:#8b8e98;
+ --up:#089981;--dn:#f23645;--link:#2962ff;--chip:#f0f3fa;--warn:#b8860b}
+:root[data-theme="dark"]{--bg:#000;--card:#000;--line:#2a2e39;--tx:#d1d4dc;--sub:#9598a1;
+ --mut:#787b86;--up:#22ab94;--dn:#f23645;--link:#3179f5;--chip:#2a2e39;--warn:#d4a017}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--tx);
+ font:16px/1.7 "Pretendard Variable",Pretendard,-apple-system,"Segoe UI","Noto Sans KR",
+ "Malgun Gothic",sans-serif;font-variant-numeric:tabular-nums}
+.wrap{max-width:1080px;margin:0 auto;padding:28px 20px 60px}
+a{color:var(--link);text-decoration:none}
+h1{font-size:28px;margin:6px 0 2px}
+h2{font-size:22px;margin:40px 0 12px}
+h2::after{content:" ›"}
+.meta{color:var(--mut);font-size:13.5px}
+.card{border:1px solid var(--line);border-radius:14px;padding:18px 22px;background:var(--card)}
+.hero{border-left:5px solid var(--up);font-size:20px;line-height:1.6;margin-top:22px}
+.hero b{color:var(--up)}
+.hero p{margin:10px 0 0;font-size:16px;color:var(--sub)}
+.steps{display:grid;grid-template-columns:repeat(3,1fr);gap:14px}
+.steps .card b{display:block;font-size:30px;color:var(--link);line-height:1}
+.steps .card{font-size:15.5px}
+@media (max-width:760px){.steps{grid-template-columns:1fr}}
+.vrow{display:grid;grid-template-columns:minmax(0,1.25fr) minmax(0,1.2fr) 220px;gap:16px;
+ align-items:center;padding:14px 0;border-bottom:1px solid var(--line)}
+@media (max-width:860px){.vrow{grid-template-columns:1fr}}
+.vname b{font-size:17px}.vname span{display:block;font-size:13.5px;color:var(--sub)}
+.vbar{position:relative;height:28px;background:var(--chip);border-radius:6px}
+.vbar i{position:absolute;left:0;top:0;bottom:0;border-radius:6px;opacity:.85}
+.vbar i.up{background:var(--up)}.vbar i.dn{background:var(--dn)}
+.vbar em{position:absolute;right:8px;top:2px;font-style:normal;font-weight:800;color:var(--tx)!important}
+em.up,span.up{color:var(--up)}em.dn,span.dn{color:var(--dn)}
+.vwin{display:flex;align-items:center;gap:8px;font-size:15px}
+.vwin b{font-size:20px}
+.hit{flex:1;height:8px;border-radius:4px;background:var(--chip);position:relative;min-width:50px}
+.hit i{position:absolute;left:0;top:0;bottom:0;border-radius:4px;background:var(--link)}
+.vwin small{color:var(--mut);width:36px;text-align:right}
+.vnote{grid-column:1/-1;font-size:13px;color:var(--mut);margin-top:-6px}
+table.ax{width:100%;border-collapse:collapse}
+table.ax td{padding:12px 8px;border-bottom:1px solid var(--line);vertical-align:top;font-size:15px}
+table.ax td span{display:block;font-size:13px;color:var(--sub)}
+.tag{display:inline-block!important;padding:3px 9px;border-radius:6px;font-weight:700;
+ font-size:13.5px!important}
+.tag.good{background:rgba(34,171,148,.16);color:var(--up)!important}
+.tag.bad{background:rgba(242,54,69,.14);color:var(--dn)!important}
+.tag.warn{background:rgba(212,160,23,.16);color:var(--warn)!important}
+.tag.na{background:var(--chip);color:var(--sub)!important}
+.two{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+@media (max-width:760px){.two{grid-template-columns:1fr}}
+.two h3{margin:0 0 8px;font-size:17px}
+ul{margin:6px 0;padding-left:20px}li{margin:5px 0}
+details{margin-top:40px}summary{cursor:pointer;color:var(--sub);font-weight:700}
+table.raw{border-collapse:collapse;margin:8px 0 16px;font-size:13.5px}
+table.raw th,table.raw td{border:1px solid var(--line);padding:5px 10px;text-align:right}
+table.raw th:first-child,table.raw td:first-child{text-align:left}
+details h4{margin:22px 0 6px}details p{margin:4px 0;font-size:14px;color:var(--sub)}
+</style></head><body><div class="wrap">
 <p><a href="./">← 대시보드로</a></p>
-<pre># 백테스트 결과 — 판정이 실제로 맞았는가
+<h1>백테스트 — 이 도구의 판정이 실제로 맞았나</h1>
+<div class="meta">25개 분기(2019-09 ~ 2025-09) ·
+ 테마별 판정 562건 확인 · 비교 대상: 미국 시장 전체(SPY)</div>
 
-생성 2026-10-15 · 스냅샷 25개 (2019-09-30 ~ 2025-09-30, 분기마다) · 관측 750건(판정 가능 562건) · 벤치마크 SPY 대비 상대수익률
+<div class="card hero">‘볼 만함’ 판정대로 샀다면 과거 14번 중 <b>11번(79%)</b> 1년 뒤 시장보다 더 올랐고, 평균 <b>+34%p</b> 더 벌었습니다.<p>나머지 판정들은 승률 48~56%로 동전 던지기와 큰 차이가 없었습니다 — 이 도구가 쓸모 있는 건 ‘볼 만함’을 골라낼 때입니다. 다만 ‘볼 만함’은 2019~2025년 동안 14번뿐인 드문 신호라, 없는 날이 대부분입니다. 비교: ‘지금은 아님’은 251번 중 132번(53%)만 시장을 이겼습니다.</p></div>
 
-각 분기말에 '그 시점에 알 수 있었던 데이터만으로' 도구를 돌려 판정을 만들고,
-이후 6·12개월 상대수익률을 붙였다. 미래 정보 컷: SEC 접수일, 통계 발표 지연 45일,
-주가 시점 컷. ③신기술·⑤정책·⑩수입침투는 과거 재구성이 불가능해 제외했다.
+<h2>어떻게 검사했나</h2>
+<div class="steps">
+<div class="card"><b>1</b>2019년부터 매 분기말로 시간을 되돌렸습니다.</div>
+<div class="card"><b>2</b>그때 이미 발표돼 있던 자료만으로 판정을 다시 냈습니다
+ — 나중에 나온 숫자는 쓰지 않았습니다(미래를 커닝하지 않게).</div>
+<div class="card"><b>3</b>그 뒤 1년 동안 그 테마 주식들이 시장보다
+ 얼마나 더(덜) 올랐는지 확인했습니다.</div>
+</div>
 
-## 1. 판정별 이후 12개월 상대수익률
+<h2>판정별 성적 — 1년 뒤 시장보다 얼마나 더 올랐나</h2>
+<div class="card"><div class='vrow'><div class='vname'><b>볼 만함</b><span>오를 이유가 확인됐고 주가는 아직 덜 오름 — 믿을 만한 근거가 이끄는 경우</span></div><div class='vbar'><i class='up' style='width:100%'></i><em class='up'>+34%p</em></div><div class='vwin'><b>11</b> / 14번 이김<span class='hit'><i style='width:79%'></i></span><small>79%</small></div></div><div class='vrow'><div class='vname'><b>지켜볼 만</b><span>조건은 같지만 이끄는 근거가 시기에 따라 맞다 틀렸다 한 종류</span></div><div class='vbar'><i class='dn' style='width:2%'></i><em class='dn'>-0.9%p</em></div><div class='vwin'><b>14</b> / 29번 이김<span class='hit'><i style='width:48%'></i></span><small>48%</small></div></div><div class='vrow'><div class='vname'><b>이미 반영</b><span>오를 이유는 있는데 주가가 이미 앞서 오름</span></div><div class='vbar'><i class='up' style='width:50%'></i><em class='up'>+17%p</em></div><div class='vwin'><b>46</b> / 85번 이김<span class='hit'><i style='width:54%'></i></span><small>54%</small></div><div class='vnote'>※ 평균은 몇 번의 큰 상승이 끌어올린 값 — 보통의 경우(가운데 값)는 +1.1%p</div></div><div class='vrow'><div class='vname'><b>되돌림</b><span>크게 오른 뒤 꺾여 내려오는 중 — 싸 보여도 과열의 되돌림</span></div><div class='vbar'><i class='up' style='width:21%'></i><em class='up'>+7.1%p</em></div><div class='vwin'><b>10</b> / 18번 이김<span class='hit'><i style='width:56%'></i></span><small>56%</small></div></div><div class='vrow'><div class='vname'><b>이유 약함</b><span>많이 눌려 있지만 오를 근거가 데이터로 확인 안 됨</span></div><div class='vbar'><i class='up' style='width:38%'></i><em class='up'>+13%p</em></div><div class='vwin'><b>82</b> / 165번 이김<span class='hit'><i style='width:50%'></i></span><small>50%</small></div><div class='vnote'>※ 평균은 몇 번의 큰 상승이 끌어올린 값 — 보통의 경우(가운데 값)는 -0.1%p</div></div><div class='vrow'><div class='vname'><b>지금은 아님</b><span>근거도 약하고 가격도 유리하지 않음</span></div><div class='vbar'><i class='up' style='width:41%'></i><em class='up'>+14%p</em></div><div class='vwin'><b>132</b> / 251번 이김<span class='hit'><i style='width:53%'></i></span><small>53%</small></div><div class='vnote'>※ 평균은 몇 번의 큰 상승이 끌어올린 값 — 보통의 경우(가운데 값)는 +2.1%p</div></div>
+<p class="meta" style="margin:12px 0 0">막대 = 시장보다 평균 몇 %p 더 올랐나 ·
+ 오른쪽 = 시장을 이긴 횟수(1년 뒤 시장보다 더 오른 경우)</p></div>
 
-| 판정 | n | 평균 | 중앙값 | 승률(>0) |
-|---|---|---|---|---|
-| 볼 만함 | 14 | +34.2%p | +29.2%p | 79% |
-| 지켜볼 만 | 29 | -0.9%p | -1.9%p | 48% |
-| 이미 반영 | 85 | +17.3%p | +1.1%p | 54% |
-| 되돌림 | 18 | +7.1%p | +7.1%p | 56% |
-| 이유 약함 | 165 | +12.9%p | -0.1%p | 50% |
-| 지금은 아님 | 251 | +13.9%p | +2.1%p | 53% |
+<h2>어떤 ‘오를 이유’가 믿을 만했나</h2>
+<div class="card"><table class="ax"><tr><td><b>전방 산업 회복</b><span>고객 산업이 살아나 주문이 넘어오는가</span></td><td><span class='tag good'>믿을 만함 — 시기와 상관없이 통했다</span></td><td>—</td></tr><tr><td><b>공급 부족</b><span>증산 여력이 없어 공급이 빡빡한가</span></td><td><span class='tag good'>믿을 만함 — 시기와 상관없이 통했다</span></td><td>이 근거가 1순위였던 ‘살 만한 조건’ 7번 중 6번 시장을 이김 (86%)</td></tr><tr><td><b>설비 교체 시기</b><span>고객 설비가 늙어 바꿀 때가 됐는가</span></td><td><span class='tag bad'>반대로 움직임 — 점수가 높을수록 덜 올랐다</span></td><td>—</td></tr><tr><td><b>투자 부족</b><span>수년간 투자를 안 해 공급이 줄었는가</span></td><td><span class='tag warn'>시기 따라 뒤집힘 — 어떤 해엔 맞고 어떤 해엔 틀렸다</span></td><td>—</td></tr><tr><td><b>마진 확대</b><span>판가는 버티는데 원가가 내리는가</span></td><td><span class='tag warn'>시기 따라 뒤집힘 — 어떤 해엔 맞고 어떤 해엔 틀렸다</span></td><td>이 근거가 1순위였던 ‘살 만한 조건’ 25번 중 13번 시장을 이김 (52%)</td></tr><tr><td><b>재고 바닥</b><span>재고가 말라 다시 채울 때인가</span></td><td><span class='tag warn'>시기 따라 뒤집힘 — 어떤 해엔 맞고 어떤 해엔 틀렸다</span></td><td>—</td></tr><tr><td><b>주문 밀림</b><span>수주가 밀려 값을 올려 받을 수 있는가</span></td><td><span class='tag good'>믿을 만함 — 시기와 상관없이 통했다</span></td><td>이 근거가 1순위였던 ‘살 만한 조건’ 7번 중 5번 시장을 이김 (71%)</td></tr></table>
+<p class="meta" style="margin:10px 0 0">‘믿을 만함’인 근거가 이끌 때만 ‘볼 만함’을 줍니다.
+ 같은 조건이라도 ‘시기 따라 뒤집힘’ 근거가 이끌면 ‘지켜볼 만’으로 한 단계 낮춥니다.</p></div>
 
-판정 체계가 유효하려면 '볼 만함'이 '지금은 아님'보다 확실히 높아야 한다.
+<h2>틀렸던 때</h2>
+<div class="two">
+<div class="card"><h3>‘볼 만함’이었는데 시장보다 못했던 경우</h3>
+<ul><li><b>2025-03 생명과학 도구</b> — ‘볼 만함’ 판정 후 1년간 시장 대비 <span class='dn'>-26%p</span></li><li><b>2023-06 방산·탄약</b> — ‘볼 만함’ 판정 후 1년간 시장 대비 <span class='dn'>-2.1%p</span></li><li><b>2022-12 건설·농기계</b> — ‘볼 만함’ 판정 후 1년간 시장 대비 <span class='dn'>-0.2%p</span></li></ul></div>
+<div class="card"><h3>낮은 판정이었는데 크게 오른 경우(놓친 상승)</h3>
+<ul><li><b>2021-03 석탄</b> — ‘지금은 아님’ 판정 후 1년간 시장 대비 <span class='up'>+432%p</span></li><li><b>2025-03 광네트워킹·AI 인프라</b> — ‘지금은 아님’ 판정 후 1년간 시장 대비 <span class='up'>+348%p</span></li><li><b>2020-09 석탄</b> — ‘이유 약함’ 판정 후 1년간 시장 대비 <span class='up'>+313%p</span></li><li><b>2025-06 광네트워킹·AI 인프라</b> — ‘지금은 아님’ 판정 후 1년간 시장 대비 <span class='up'>+311%p</span></li></ul>
+<p class="meta">오를 이유가 데이터에 늦게 잡히는 테마(2~3개월 지연)의 급등은 이 도구가 놓칩니다.</p></div>
+</div>
 
-### 6개월 전망
+<h2>시기마다 달랐나</h2>
+<div class="card"><ul><li><b>앞쪽 절반</b>(2019-09 ~ 2022-09): ‘볼 만함’ 10번 중 10번 이김(100%), 평균 +47%p</li><li><b>뒤쪽 절반</b>(2022-12 ~ 2025-09): ‘볼 만함’ 4번 중 1번 이김(25%), 평균 +1.4%p</li></ul>
+<p class="meta">최근 몇 년은 대형 기술주가 시장을 끌어서, 이 도구가 다루는 산업 테마가
+ 시장을 이기기 어려운 구간이었습니다. 최근 표본이 적어 아직 단정하기 이릅니다.</p></div>
 
-| 판정 | n | 평균 | 중앙값 | 승률 |
-|---|---|---|---|---|
-| 볼 만함 | 14 | +24.9%p | +14.0%p | 79% |
-| 지켜볼 만 | 29 | +0.7%p | +0.9%p | 55% |
-| 이미 반영 | 85 | +6.6%p | +1.0%p | 52% |
-| 되돌림 | 18 | +0.5%p | -4.1%p | 39% |
-| 이유 약함 | 165 | +6.2%p | +0.7%p | 53% |
-| 지금은 아님 | 251 | +4.2%p | -0.1%p | 50% |
+<h2>주의할 점</h2>
+<div class="card"><ul>
+<li><b>지금 종목 목록을 과거에 그대로 적용했습니다.</b> 그 사이 사라진 회사가 빠져
+ 있어 성적이 실제보다 조금 좋게 나왔을 수 있습니다.</li>
+<li><b>경제 통계는 나중에 고쳐진 숫자</b>를 썼습니다(처음 발표 숫자와 조금 다를 수 있음).</li>
+<li><b>분기마다 1년 뒤를 보니 기간이 겹칩니다.</b> 같은 상승이 여러 번 세어질 수 있어,
+ 아래 숫자 원문에 겹치지 않게 1년에 한 번만 센 결과도 함께 실었습니다.</li>
+<li><b>정책·신기술 같은 근거는 과거를 다시 만들 수 없어</b> 검사에서 뺐습니다.
+ 그런 근거가 핵심인 테마(방산 등)는 실전과 다르게 나올 수 있습니다.</li>
+<li>과거 성적이 앞으로를 보장하지 않습니다 — 확률이 어느 쪽인지 알려주는 자료입니다.</li>
+</ul></div>
 
-### 비중첩 표본(연 1회, 12월 스냅샷만) — 중첩 착시 점검
-
-| 판정 | n | 평균 | 중앙값 | 승률 |
-|---|---|---|---|---|
-| 볼 만함 | 3 | +46.3%p | +17.8%p | 67% |
-| 지켜볼 만 | 8 | +10.3%p | +1.4%p | 50% |
-| 이미 반영 | 20 | +18.7%p | +5.0%p | 50% |
-| 되돌림 | 2 | +9.4%p | +9.4%p | 50% |
-| 이유 약함 | 39 | +0.5%p | -8.4%p | 33% |
-| 지금은 아님 | 61 | +6.8%p | -0.9%p | 49% |
-
-## 2. 축별 예측력 (IC = 축 점수와 이후 12개월 수익률의 순위 상관)
-
-| 축 | IC | n | 해석 |
-|---|---|---|---|
-| ① 낙수(전방수요) | +0.20 | 368 | 예측력 있음 |
-| ② 공급 비탄력 | +0.06 | 299 | 약함 |
-| ④ 교체 주기 | -0.27 | 474 | 역방향(주의) |
-| ⑥ 캐펙스 사이클 | +0.07 | 476 | 약함 |
-| ⑦ 스프레드 | -0.02 | 324 | 소음 수준 |
-| ⑧ 재고 사이클 | +0.04 | 256 | 소음 수준 |
-| ⑨ 병목·수주잔고 | +0.13 | 250 | 약함 |
-| U1 실적 변곡 | +0.07 | 628 | 약함 |
-| U2 밸류에이션 여유 | -0.05 | 716 | 역방향(주의) |
-| U3 주가 미반응 | +0.01 | 750 | 소음 수준 |
-| U4 장기 미반영(3년) | +0.12 | 750 | 약함 |
-| U5 바닥 다지기 | -0.10 | 750 | 역방향(주의) |
-
-IC +0.15 이상이면 실전 팩터 수준의 예측력이다. 0 근처는 소음, 음수는
-그 축의 방향 설정을 의심해야 한다.
-
-## 3. 되돌림 필터 검증
-
-| 구분 | n | 평균 | 중앙값 | 승률 |
-|---|---|---|---|---|
-| 일반 | 544 | +13.9%p | +2.1%p | 52% |
-| 되돌림 | 18 | +7.1%p | +7.1%p | 56% |
-
-되돌림으로 걸러낸 테마-시점의 이후 수익률이 일반보다 낮아야 필터가 유효하다.
-
-## 4. 종합점수(기하평균 랭크) 상·하위 절반
-
-| 구분 | n | 평균 | 중앙값 | 승률 |
-|---|---|---|---|---|
-| 상위 절반 | 281 | +12.8%p | +3.0%p | 54% |
-| 하위 절반 | 281 | +14.5%p | +0.8%p | 51% |
-
-## 5. 한계 — 이 숫자를 믿기 전에
-
-- **생존 편향**: 오늘의 티커 구성을 과거로 소급했다. 상폐·교체 종목이 빠져
-  수익률이 실제보다 좋게 나올 수 있다.
-- **FRED 수정치**: 최초 발표치가 아니라 수정 반영된 현재 시계열이다.
-- **표본 중첩**: 분기 스냅샷 × 12개월 창이라 관측이 독립이 아니다 —
-  1절의 비중첩 표가 안전판이다.
-- **③⑤⑩축 제외**: 정책·신기술이 주 촉매인 테마(방산 등)는 판정이
-  실전과 다르게 나온다.
-- 테마 정의 자체가 현재 버전이다(과거의 우리가 이 테마를 골랐으리란 보장 없음).
-
-## 6. 실적반응(PEAD) 신호 검증 — 편입 보류
-
-종목-분기 2,339건: 6개월 IC +0.022, 12개월 IC +0.021 — 소음 수준(기준 +0.10).
-상위⅓ vs 하위⅓ 12개월 스프레드 +17.4%p vs +14.6%p.
-분기 스냅샷 설계상 발표 후 최대 120일 낡은 신호가 섞여 PEAD 의
-단기(60일) 효과가 희석된 탓일 수 있으나, 현 설계에서 예측력이
-없으므로 점수에 넣지 않는다. 표시·진단용으로만 유지.
-</pre>
-</body></html>
+<details><summary>숫자 원문 보기(전문가용 — 상관계수·중앙값·6개월 성적 등)</summary>
+<p>생성 2026-10-16 · 스냅샷 25개 (2019-09-30 ~ 2025-09-30, 분기마다) · 관측 750건(판정 가능 562건) · 벤치마크 SPY 대비 상대수익률</p>
+<p>각 분기말에 &#x27;그 시점에 알 수 있었던 데이터만으로&#x27; 도구를 돌려 판정을 만들고,</p>
+<p>이후 6·12개월 상대수익률을 붙였다. 미래 정보 컷: SEC 접수일, 통계 발표 지연 45일,</p>
+<p>주가 시점 컷. ③신기술·⑤정책·⑩수입침투는 과거 재구성이 불가능해 제외했다.</p>
+<h4>1. 판정별 이후 12개월 상대수익률</h4>
+<table class='raw'><thead><tr><th>판정</th><th>n</th><th>평균</th><th>중앙값</th><th>승률(&gt;0)</th></tr></thead><tbody><tr><td>볼 만함</td><td>14</td><td>+34.2%p</td><td>+29.2%p</td><td>79%</td></tr><tr><td>지켜볼 만</td><td>29</td><td>-0.9%p</td><td>-1.9%p</td><td>48%</td></tr><tr><td>이미 반영</td><td>85</td><td>+17.3%p</td><td>+1.1%p</td><td>54%</td></tr><tr><td>되돌림</td><td>18</td><td>+7.1%p</td><td>+7.1%p</td><td>56%</td></tr><tr><td>이유 약함</td><td>165</td><td>+12.9%p</td><td>-0.1%p</td><td>50%</td></tr><tr><td>지금은 아님</td><td>251</td><td>+13.9%p</td><td>+2.1%p</td><td>53%</td></tr></tbody></table>
+<p>판정 체계가 유효하려면 &#x27;볼 만함&#x27;이 &#x27;지금은 아님&#x27;보다 확실히 높아야 한다.</p>
+<h4>6개월 전망</h4>
+<table class='raw'><thead><tr><th>판정</th><th>n</th><th>평균</th><th>중앙값</th><th>승률</th></tr></thead><tbody><tr><td>볼 만함</td><td>14</td><td>+24.9%p</td><td>+14.0%p</td><td>79%</td></tr><tr><td>지켜볼 만</td><td>29</td><td>+0.7%p</td><td>+0.9%p</td><td>55%</td></tr><tr><td>이미 반영</td><td>85</td><td>+6.6%p</td><td>+1.0%p</td><td>52%</td></tr><tr><td>되돌림</td><td>18</td><td>+0.5%p</td><td>-4.1%p</td><td>39%</td></tr><tr><td>이유 약함</td><td>165</td><td>+6.2%p</td><td>+0.7%p</td><td>53%</td></tr><tr><td>지금은 아님</td><td>251</td><td>+4.2%p</td><td>-0.1%p</td><td>50%</td></tr></tbody></table>
+<h4>비중첩 표본(연 1회, 12월 스냅샷만) — 중첩 착시 점검</h4>
+<table class='raw'><thead><tr><th>판정</th><th>n</th><th>평균</th><th>중앙값</th><th>승률</th></tr></thead><tbody><tr><td>볼 만함</td><td>3</td><td>+46.3%p</td><td>+17.8%p</td><td>67%</td></tr><tr><td>지켜볼 만</td><td>8</td><td>+10.3%p</td><td>+1.4%p</td><td>50%</td></tr><tr><td>이미 반영</td><td>20</td><td>+18.7%p</td><td>+5.0%p</td><td>50%</td></tr><tr><td>되돌림</td><td>2</td><td>+9.4%p</td><td>+9.4%p</td><td>50%</td></tr><tr><td>이유 약함</td><td>39</td><td>+0.5%p</td><td>-8.4%p</td><td>33%</td></tr><tr><td>지금은 아님</td><td>61</td><td>+6.8%p</td><td>-0.9%p</td><td>49%</td></tr></tbody></table>
+<h4>2. 축별 예측력 (IC = 축 점수와 이후 12개월 수익률의 순위 상관)</h4>
+<table class='raw'><thead><tr><th>축</th><th>IC</th><th>n</th><th>해석</th></tr></thead><tbody><tr><td>① 낙수(전방수요)</td><td>+0.20</td><td>368</td><td>예측력 있음</td></tr><tr><td>② 공급 비탄력</td><td>+0.06</td><td>299</td><td>약함</td></tr><tr><td>④ 교체 주기</td><td>-0.27</td><td>474</td><td>역방향(주의)</td></tr><tr><td>⑥ 캐펙스 사이클</td><td>+0.07</td><td>476</td><td>약함</td></tr><tr><td>⑦ 스프레드</td><td>-0.02</td><td>324</td><td>소음 수준</td></tr><tr><td>⑧ 재고 사이클</td><td>+0.04</td><td>256</td><td>소음 수준</td></tr><tr><td>⑨ 병목·수주잔고</td><td>+0.13</td><td>250</td><td>약함</td></tr><tr><td>U1 실적 변곡</td><td>+0.07</td><td>628</td><td>약함</td></tr><tr><td>U2 밸류에이션 여유</td><td>-0.05</td><td>716</td><td>역방향(주의)</td></tr><tr><td>U3 주가 미반응</td><td>+0.01</td><td>750</td><td>소음 수준</td></tr><tr><td>U4 장기 미반영(3년)</td><td>+0.12</td><td>750</td><td>약함</td></tr><tr><td>U5 바닥 다지기</td><td>-0.10</td><td>750</td><td>역방향(주의)</td></tr></tbody></table>
+<p>IC +0.15 이상이면 실전 팩터 수준의 예측력이다. 0 근처는 소음, 음수는</p>
+<p>그 축의 방향 설정을 의심해야 한다.</p>
+<h4>3. 되돌림 필터 검증</h4>
+<table class='raw'><thead><tr><th>구분</th><th>n</th><th>평균</th><th>중앙값</th><th>승률</th></tr></thead><tbody><tr><td>일반</td><td>544</td><td>+13.9%p</td><td>+2.1%p</td><td>52%</td></tr><tr><td>되돌림</td><td>18</td><td>+7.1%p</td><td>+7.1%p</td><td>56%</td></tr></tbody></table>
+<p>되돌림으로 걸러낸 테마-시점의 이후 수익률이 일반보다 낮아야 필터가 유효하다.</p>
+<h4>4. 종합점수(기하평균 랭크) 상·하위 절반</h4>
+<table class='raw'><thead><tr><th>구분</th><th>n</th><th>평균</th><th>중앙값</th><th>승률</th></tr></thead><tbody><tr><td>상위 절반</td><td>281</td><td>+12.8%p</td><td>+3.0%p</td><td>54%</td></tr><tr><td>하위 절반</td><td>281</td><td>+14.5%p</td><td>+0.8%p</td><td>51%</td></tr></tbody></table>
+<h4>5. 한계 — 이 숫자를 믿기 전에</h4>
+<p><b>생존 편향</b>: 오늘의 티커 구성을 과거로 소급했다. 상폐·교체 종목이 빠져</p>
+<p>수익률이 실제보다 좋게 나올 수 있다.</p>
+<p><b>FRED 수정치</b>: 최초 발표치가 아니라 수정 반영된 현재 시계열이다.</p>
+<p><b>표본 중첩</b>: 분기 스냅샷 × 12개월 창이라 관측이 독립이 아니다 —</p>
+<p>1절의 비중첩 표가 안전판이다.</p>
+<p><b>③⑤⑩축 제외</b>: 정책·신기술이 주 촉매인 테마(방산 등)는 판정이</p>
+<p>실전과 다르게 나온다.</p>
+<p>테마 정의 자체가 현재 버전이다(과거의 우리가 이 테마를 골랐으리란 보장 없음).</p>
+<h4>6. 실적반응(PEAD) 신호 검증 — 편입 보류</h4>
+<p>종목-분기 2,339건: 6개월 IC +0.022, 12개월 IC +0.021 — 소음 수준(기준 +0.10).</p>
+<p>상위⅓ vs 하위⅓ 12개월 스프레드 +17.4%p vs +14.6%p.</p>
+<p>분기 스냅샷 설계상 발표 후 최대 120일 낡은 신호가 섞여 PEAD 의</p>
+<p>단기(60일) 효과가 희석된 탓일 수 있으나, 현 설계에서 예측력이</p>
+<p>없으므로 점수에 넣지 않는다. 표시·진단용으로만 유지.</p>
+</details>
+</div></body></html>

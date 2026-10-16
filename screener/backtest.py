@@ -619,9 +619,10 @@ def write_report(result: dict, ana: dict, path_md: Path, path_html: Path) -> Non
     md = "\n".join(lines) + "\n"
     path_md.write_text(md, encoding="utf-8")
 
-    # 같은 내용을 배포 가능한 HTML 로
-    rows_html = md.replace("&", "&amp;").replace("<", "&lt;")
-    html = _MD_HTML.replace("__BODY__", rows_html)
+    # 배포 페이지는 쉬운 말 판(결론→방법→판정별 성적→근거→틀린 때→주의),
+    # 마크다운 숫자 원문은 그 페이지 맨 아래 접기로 들어간다.
+    from .backtest_page import build as _easy_page
+    html = _easy_page(result, ana, md)
     path_html.parent.mkdir(exist_ok=True)
     path_html.write_text(html, encoding="utf-8")
 

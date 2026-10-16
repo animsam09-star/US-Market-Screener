@@ -1472,6 +1472,41 @@ def f30_penetration_units():
     check("F30 100% 아님", pen[-1][1] < 95, f"{pen[-1][1]:.1f}")
 
 
+# ---------------------------------------------------------------- F49
+def f49_backtest_easy_page():
+    """백테스트 페이지는 쉬운 말 판 — 결론·성적 막대·근거·틀린 때, 원문은 접기.
+
+    요구(2026-10-16): "백테스트 검증 결과도 내가 이해하기 쉽게". 종전 페이지는
+    마크다운 원문을 <pre> 로 찍어 '|---|' 표 기호·IC 같은 용어가 그대로 보였다.
+    또 결론 문장이 '판정이 낮을수록 성적도 낮다'고 했는데 실제 숫자는 '볼 만함'만
+    뚜렷하고 나머지는 엇비슷했다 — 문장은 숫자에서 만들어야 한다.
+    """
+    from screener.backtest_page import build
+
+    def rec(v, f, d="2020-03-31"):
+        return {"date": d, "theme": "T", "verdict": v, "fwd12": f,
+                "axes": {"A2": 80.0}, "uaxes": {}, "rank": 50, "rebound": False}
+
+    recs = ([rec("볼 만함", 30.0)] * 4 + [rec("볼 만함", -5.0)]
+            + [rec("지금은 아님", x) for x in (10.0, -8.0, 3.0, -2.0)])
+    stat = lambda v, n, m, md, h: {"n": n, "mean": m, "median": md, "hit": h}
+    ana = {"by_verdict": {"볼 만함": stat(0, 5, 23.0, 30.0, 80.0),
+                          "지금은 아님": stat(0, 4, 0.8, 0.5, 50.0)},
+           "axis_ic": {"A2": {"ic": 0.2, "n": 9, "ic_early": 0.1,
+                              "ic_late": 0.2, "stable": True,
+                              "cond_n": 5, "cond_hit": 80.0}},
+           "n_judged": 9}
+    md = "# 제목\n\n## 1. 표\n\n| 판정 | n |\n|---|---|\n| 볼 만함 | 5 |\n"
+    h = build({"records": recs, "snapshots": ["2020-03-31", "2021-03-31"],
+               "benchmark": "SPY"}, ana, md)
+    check("F49 결론: N번 중 M번 이김", "5번 중" in h and "4번(80%)" in h, "")
+    check("F49 결론은 숫자에서(단조 주장 금지)", "낮을수록" not in h, "")
+    check("F49 판정 막대", h.count("class='vrow'") == 2, "")
+    check("F49 근거 행·조건부 승률", "공급 부족" in h and "5번 중 4번" in h, "")
+    check("F49 표 기호 미노출", "|---|" not in h and "<table class='raw'>" in h, "")
+    check("F49 원문은 접기 안", h.index("<details") < h.index("table class='raw'"), "")
+
+
 # ---------------------------------------------------------------- F48
 def f48_stock_detail_window():
     """종목(티커)을 누르면 상세 창이 떠야 한다.
@@ -1560,7 +1595,7 @@ def main() -> int:
                f38_why_flat_diagnosis, f39_week_changes, f40_earnings_link,
                f41_pead_point_in_time, f42_price_snapshot_fallback,
                f43_sample_window, f44_stable_axis_gate, f45_stable_axes_self_update, f46_theme_schema, f47_dashboard_tabs_and_honesty,
-               f48_stock_detail_window]:
+               f48_stock_detail_window, f49_backtest_easy_page]:
         try:
             fn()
         except Exception as e:
