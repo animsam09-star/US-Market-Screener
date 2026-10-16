@@ -45,6 +45,8 @@ def _get(path: str, params: dict, kind: str):
         return None
     q = urllib.parse.urlencode({**params, "apikey": k})
     url = f"{BASE}/{path}?{q}"
+    if STAT.get(f"{kind}_off"):
+        return None                       # 이번 실행에서 막힌 것으로 판정 — 하루 한도를 아낀다
     if not is_fresh(url, TTL_H):
         if BUDGET["left"] <= 0:
             STAT["skipped"] += 1
@@ -55,7 +57,15 @@ def _get(path: str, params: dict, kind: str):
         return fetch_json(url, ttl_hours=TTL_H, retries=1)
     except (FetchError, ValueError) as e:
         STAT[f"{kind}_err"] += 1
-        STAT["why"] = STAT["why"] or f"{kind}: " + str(e).replace(k, "***")[:80]
+        msg = str(e).replace(k, "***")
+        if "실패:" in msg:                  # 'URL 실패: HTTPError: 402 ...' → 사유만
+            msg = msg.split("실패:", 1)[1]
+        elif "apikey=" in msg:
+            msg = msg.split("apikey=", 1)[0] + "…"
+        STAT["why"] = STAT["why"] or f"{kind}: " + msg.strip()[:110]
+        # 성공 없이 연속 3번 실패하면 이번 실행에선 그 자료를 끈다(유료 전용·키 오류 등)
+        if STAT[f"{kind}_err"] >= 3 and not STAT[f"{kind}_ok"] and not STAT[f"{kind}_empty"]:
+            STAT[f"{kind}_off"] = True
         return None
 
 
