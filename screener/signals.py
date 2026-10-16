@@ -587,8 +587,28 @@ def evaluate_theme(theme: dict, tmap: dict, bench: list, series_cache: dict) -> 
             p = _reco.setdefault(_row["period"], [0, 0])
             p[0] += _row["buy"]
             p[1] += _row["total"]
+    # FMP — 목표주가 요약·다음 회계연도 EPS 추정치(한 달 전 기록과 비교)
+    _pt, _est = [], {}
+    try:
+        from datetime import date as _date2
+
+        from . import fmp as _fmp
+        for _t in tickers:
+            _p = _fmp.pt_summary(_t)
+            if _p:
+                _pt.append((_t, _p))
+            _e = _fmp.next_fy_eps(_t)
+            if _e:
+                _est[_t] = [_e[0], _e[1]]
+        _rev = _fmp.revisions(_est, _fmp.est_baseline(_date2.today()))
+    except Exception as _e2:
+        res.notes.append(f"추정치 미확보: {type(_e2).__name__}")
+        _rev = []
     res.series = {
         **_ppi,
+        "pt": _pt,
+        "est": _est,
+        "est_rev": _rev,
         "lead": _lead,
         "insider": _ins,
         "reco": [(k, v[0], v[1]) for k, v in sorted(_reco.items())],

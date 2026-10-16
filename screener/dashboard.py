@@ -760,6 +760,30 @@ def _early_signals(r: ThemeResult) -> list[tuple[str, str]]:
         if a - b >= 5:
             out.append(("애널리스트 매수 의견 증가",
                         f"매수 의견 비중 {b:.0f}% → {a:.0f}% (3개월, 의견 {rc[-1][2]}건)"))
+    # 목표주가 상향 — 최근 1개월 평균 목표주가가 최근 분기 평균보다 높아짐(FMP)
+    pts = [(t, d["lastMonthAvgPriceTarget"] / d["lastQuarterAvgPriceTarget"] - 1)
+           for t, d in S_.get("pt") or []
+           if (d.get("lastMonthCount") or 0) >= 1 and (d.get("lastQuarterCount") or 0) >= 2
+           and d.get("lastMonthAvgPriceTarget") and d.get("lastQuarterAvgPriceTarget")]
+    if len(pts) >= 2:
+        ch = sorted(c for _, c in pts)
+        med = ch[len(ch) // 2]
+        up = sum(1 for c in ch if c > 0)
+        if med >= 0.03 and up >= 0.6 * len(ch):
+            out.append(("목표주가 상향",
+                        f"최근 1개월 평균 목표주가가 분기 평균보다 높아졌습니다 — {up}/{len(ch)}개 종목 상향, "
+                        f"가운데값 {med * 100:+.0f}%"))
+    # EPS 추정치 상향 — 다음 회계연도 EPS 평균 추정치를 약 한 달 전 기록과 비교(FMP)
+    rv_ = [(t, n / o - 1) for t, o, n, _d in S_.get("est_rev") or [] if o > 0]
+    if len(rv_) >= 2:
+        ch = sorted(c for _, c in rv_)
+        med = ch[len(ch) // 2]
+        up = sum(1 for c in ch if c > 0.005)
+        if med >= 0.02 and up >= 0.6 * len(ch):
+            base_d = (S_.get("est_rev") or [[None, None, None, ""]])[0][3]
+            out.append(("EPS 추정치 상향",
+                        f"다음 회계연도 이익 추정치가 {_ym(base_d[:7]) if base_d else '한 달 전'}보다 "
+                        f"{up}/{len(ch)}개 종목에서 올랐습니다(가운데값 {med * 100:+.0f}%)"))
     px = [v for _, v in (S_.get("price_index") or []) if v is not None]
     if len(px) >= 230:
         ma = [sum(px[i - 199:i + 1]) / 200 for i in range(len(px) - 30, len(px))]
@@ -2213,13 +2237,16 @@ def _diag_line() -> str:
     """수집 상태 한 줄 — HTML 주석 안에 들어가므로 '--' 와 꺾쇠를 지운다."""
     try:
         from .insider import RUN_BUDGET, STAT
+        from .fmp import STAT as FS
         from .sources import FH_INS_STAT, RECO_STAT
         t = (f"form4 docs={STAT['docs']} doc_err={STAT['doc_err']} subs_err={STAT['subs_err']} "
              f"sec_blocked={STAT['sec_blocked']} fh_ins ok={FH_INS_STAT['ok']} "
              f"empty={FH_INS_STAT['empty']} err={FH_INS_STAT['err']} {FH_INS_STAT['why']} | "
              f"deferred={RUN_BUDGET.skipped} {STAT['err']} | reco key={RECO_STAT['key']} "
              f"ok={RECO_STAT['ok']} empty={RECO_STAT['empty']} err={RECO_STAT['err']} "
-             f"{RECO_STAT['why']}")
+             f"{RECO_STAT['why']} | fmp key={FS['key']} est ok={FS['est_ok']} "
+             f"empty={FS['est_empty']} err={FS['est_err']} pt ok={FS['pt_ok']} "
+             f"empty={FS['pt_empty']} err={FS['pt_err']} skip={FS['skipped']} {FS['why']}")
     except Exception as e:
         t = f"diag {type(e).__name__}"
     return t.replace("--", "-").replace(">", " ").replace("<", " ")

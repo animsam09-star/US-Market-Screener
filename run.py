@@ -104,6 +104,15 @@ def _append_history(results) -> None:
         # 초기 신호 켜짐/꺼짐 기록 — 'NEW' 배지와 '최근 신호 변화'의 재료
         "early": {r.name: [n for n, _ in _early_signals(r)] for r in results},
     }
+    # FMP 추정치 스냅샷 — 과거 추정치를 주지 않으므로 직접 쌓아 한 달 뒤 비교한다
+    try:
+        from screener.fmp import append_est_history
+        est = {}
+        for r in results:
+            est.update(r.series.get("est") or {})
+        append_est_history(est)
+    except Exception as e:
+        print(f"[주의] 추정치 기록 실패: {e}")
     p = ROOT / "reports" / "score_history.jsonl"
     p.parent.mkdir(exist_ok=True)
     lines = []

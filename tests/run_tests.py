@@ -1472,6 +1472,61 @@ def f30_penetration_units():
     check("F30 100% 아님", pen[-1][1] < 95, f"{pen[-1][1]:.1f}")
 
 
+# ---------------------------------------------------------------- F53
+def f53_fmp_estimates():
+    """FMP 추정치·목표주가 — 해석·한 달 전 비교·신호(2026-10-16 키 등록).
+
+    추정치는 과거값을 주지 않아 직접 쌓는다: 같은 회계연도끼리만 비교해야 한다
+    (연도가 넘어가면 '내년' 추정이 바뀌어 가짜 상향이 생긴다).
+    """
+    from datetime import date
+    import screener.dashboard as db
+    import screener.fmp as fm
+    from screener.signals import ThemeResult
+
+    today = date(2026, 10, 16)
+    pl = [{"date": "2025-12-31", "epsAvg": 5.0, "numAnalystsEps": 9},
+          {"date": "2027-12-31", "epsAvg": 7.0, "numAnalystsEps": 8},
+          {"date": "2026-12-31", "epsAvg": 6.0, "numAnalystsEps": 10}]
+    check("F53 다음 회계연도 EPS(가장 가까운 미래)", fm.parse_estimates(pl, today) == ("2026-12-31", 6.0, 10),
+          str(fm.parse_estimates(pl, today)))
+    check("F53 옛 필드 이름도 읽음", fm.parse_estimates(
+        [{"date": "2026-12-31", "estimatedEpsAvg": 2.5}], today) == ("2026-12-31", 2.5, 0), "")
+    pt = fm.parse_pt([{"lastMonthCount": 3, "lastMonthAvgPriceTarget": 110,
+                       "lastQuarterCount": 8, "lastQuarterAvgPriceTarget": 100}])
+    check("F53 목표주가 요약 해석", pt and pt["lastMonthAvgPriceTarget"] == 110, str(pt))
+    check("F53 빈 응답은 None", fm.parse_pt([]) is None and fm.parse_estimates({}, today) is None, "")
+
+    old = fm._HIST
+    try:
+        fm._HIST = [{"date": "2026-08-01", "est": {"AA": ["2026-12-31", 1.0]}},
+                    {"date": "2026-09-14", "est": {"AA": ["2026-12-31", 2.0], "BB": ["2026-12-31", 4.0],
+                                                   "CC": ["2025-12-31", 1.0]}},
+                    {"date": "2026-10-10", "est": {"AA": ["2026-12-31", 9.0]}}]
+        b = fm.est_baseline(today)
+        check("F53 기준 = 25~75일 전 중 가장 최근", b and b["date"] == "2026-09-14", str(b))
+        rv = fm.revisions({"AA": ["2026-12-31", 2.2], "BB": ["2026-12-31", 4.2],
+                           "CC": ["2026-12-31", 3.0]}, b)
+        check("F53 같은 회계연도끼리만 비교", sorted(x[0] for x in rv) == ["AA", "BB"], str(rv))
+    finally:
+        fm._HIST = old
+
+    r = ThemeResult(name="T", thesis="", tickers=["AA", "BB"])
+    r.series = {"pt": [("AA", {"lastMonthCount": 2, "lastMonthAvgPriceTarget": 110,
+                               "lastQuarterCount": 6, "lastQuarterAvgPriceTarget": 100}),
+                       ("BB", {"lastMonthCount": 1, "lastMonthAvgPriceTarget": 52,
+                               "lastQuarterCount": 4, "lastQuarterAvgPriceTarget": 50})],
+                "est_rev": [("AA", 2.0, 2.2, "2026-09-14"), ("BB", 4.0, 4.2, "2026-09-14")]}
+    names = [n for n, _ in db._early_signals(r)]
+    check("F53 신호: 목표주가 상향·EPS 추정치 상향",
+          "목표주가 상향" in names and "EPS 추정치 상향" in names, str(names))
+    q = ThemeResult(name="U", thesis="", tickers=["AA"])
+    q.series = {"pt": [("AA", {"lastMonthCount": 2, "lastMonthAvgPriceTarget": 110,
+                               "lastQuarterCount": 6, "lastQuarterAvgPriceTarget": 100})],
+                "est_rev": [("AA", 2.0, 2.0, "2026-09-14"), ("BB", 4.0, 3.9, "2026-09-14")]}
+    check("F53 한 종목뿐·추정치 정체는 침묵", db._early_signals(q) == [], str(db._early_signals(q)))
+
+
 # ---------------------------------------------------------------- F52
 def f52_early_record_and_new_data():
     """초기 신호 2차 — 과거 적중 기록·NEW·새 자료 3종(2026-10-16 "다 해주고").
@@ -1873,7 +1928,7 @@ def main() -> int:
                f41_pead_point_in_time, f42_price_snapshot_fallback,
                f43_sample_window, f44_stable_axis_gate, f45_stable_axes_self_update, f46_theme_schema, f47_dashboard_tabs_and_honesty,
                f48_stock_detail_window, f49_backtest_easy_page, f50_flow_analysis, f51_early_signals,
-               f52_early_record_and_new_data]:
+               f52_early_record_and_new_data, f53_fmp_estimates]:
         try:
             fn()
         except Exception as e:
