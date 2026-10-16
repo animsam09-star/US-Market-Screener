@@ -118,6 +118,8 @@ def fetch(url: str, *, ttl_hours: float = 24.0, json_body: object | None = None,
 
     host = url.split("/")[2]
     n_retry, backoff, dead_after = _HOST_PROFILE.get(host, (retries, 1.0, _DEAD_AFTER))
+    # retries=0 이면 range(0) 이라 요청을 한 번도 안 보낸다(2026-10-16 배포본 실측) — 최소 1회
+    n_retry = max(1, n_retry)
 
     # 회로차단: 이미 죽은 호스트는 네트워크를 건드리지 않고 즉시 실패시킨다.
     # 캐시가 있으면 낡았더라도 그걸 쓴다.

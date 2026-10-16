@@ -88,13 +88,18 @@ class _Budget:
 
 RUN_BUDGET = _Budget(FETCH_BUDGET)   # 프로세스(=실행 1회) 단위
 # 배포본 진단용(페이지 숨은 표식) — 문서 몇 건 읽었고 몇 건 실패했나
-STAT = {"subs_err": 0, "docs": 0, "doc_err": 0, "err": ""}
+STAT = {"subs_err": 0, "docs": 0, "doc_err": 0, "err": "", "sec_blocked": False}
 
 
 def live_buys(ticker: str, cik: int, today: date | None = None,
               budget: _Budget | None = None) -> list[dict]:
     """최근 LIVE_LOOKBACK 일 장내 매수. 예산을 넘는 문서는 건너뛰고 센다."""
     today = today or date.today()
+    cutoff_d = (today - timedelta(days=LIVE_LOOKBACK)).isoformat()
+    if STAT["sec_blocked"]:
+        # SEC 원문 서버가 이 실행 환경(클라우드 러너)을 막았다 — Finnhub 재배포로 대체
+        from .sources import finnhub_insider
+        return finnhub_insider(ticker, cutoff_d)
     try:
         sub = fetch_json(f"https://data.sec.gov/submissions/CIK{cik:010d}.json",
                          ttl_hours=24)
@@ -126,6 +131,11 @@ def live_buys(ticker: str, cik: int, today: date | None = None,
         except FetchError as e:
             STAT["doc_err"] += 1
             STAT["err"] = STAT["err"] or f"doc {str(e)[:60]}"
+            if str(e).startswith("403"):
+                STAT["sec_blocked"] = True
+                if budget is not None:
+                    budget.left += 1      # 못 쓴 예산은 돌려준다
+                return live_buys(ticker, cik, today, budget)
             continue
         for b in parse_form4(xml):
             b.update({"date": fd, "ticker": ticker})

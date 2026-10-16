@@ -1593,6 +1593,59 @@ def f52_early_record_and_new_data():
     check("F52 선행 지표가 스냅샷 수집 대상에 포함", want <= set(collect_ids()), str(want - set(collect_ids())))
     check("F52 선행 지표가 동봉 스냅샷에 실제로 있음", want <= snap_ids, str(want - snap_ids))
 
+    # 배포본 실측 사고 2건 — ①retries=0 이 요청을 한 번도 안 보냄 ②SEC 원문 403(클라우드 러너)
+    import screener.net as net
+    import screener.insider as ins
+    import screener.sources as so
+    calls = []
+
+    class _R:
+        status_code = 200
+        content = b"[]"
+
+        def raise_for_status(self):
+            pass
+    old_get = net.requests.get
+    try:
+        net.requests.get = lambda *a, **k: calls.append(1) or _R()
+        net.fetch("https://example.invalid/f52-retry-zero?x=%d" % id(calls), ttl_hours=0, retries=0)
+    except Exception as e:
+        calls.append(f"ERR {e}")
+    finally:
+        net.requests.get = old_get
+    check("F52 retries=0 이어도 최소 1회 요청", calls[:1] == [1], str(calls))
+
+    payload = {"data": [
+        {"name": "A", "transactionCode": "P", "change": 1000, "transactionPrice": 30,
+         "filingDate": "2026-09-01", "isDerivative": False},
+        {"name": "B", "transactionCode": "S", "change": -500, "transactionPrice": 30,
+         "filingDate": "2026-09-02", "isDerivative": False},
+        {"name": "C", "transactionCode": "P", "change": 1000, "transactionPrice": 30,
+         "filingDate": "2026-01-02", "isDerivative": False}]}
+    fb = so._parse_fh_insider(payload, "AA", "2026-06-01")
+    check("F52 Finnhub 내부자: 장내 매수·기간 안만", [b["owner"] for b in fb] == ["A"]
+          and fb[0]["value"] == 30000, str(fb))
+
+    old_ft, old_fj, old_fi = ins.fetch_text, ins.fetch_json, so.finnhub_insider
+    old_blk = ins.STAT["sec_blocked"]
+    try:
+        ins.STAT["sec_blocked"] = False
+        ins.fetch_json = lambda *a, **k: {"filings": {"recent": {
+            "form": ["4"], "filingDate": [date.today().isoformat()],
+            "accessionNumber": ["0000000000-26-000001"], "primaryDocument": ["x/f.xml"]}}}
+
+        def _deny(*a, **k):
+            raise ins.FetchError("403 접근 거부 https://www.sec.gov/... — 재시도 생략")
+        ins.fetch_text = _deny
+        so.finnhub_insider = lambda t, since: [{"date": "2026-10-01", "ticker": t, "owner": "Z",
+                                                "role": "내부자", "value": 50000}]
+        got = ins.live_buys("AA", 1, budget=ins._Budget(5))
+        check("F52 SEC 원문 403 → Finnhub 대체", got and got[0]["owner"] == "Z"
+              and ins.STAT["sec_blocked"], str(got))
+    finally:
+        ins.fetch_text, ins.fetch_json, so.finnhub_insider = old_ft, old_fj, old_fi
+        ins.STAT["sec_blocked"] = old_blk
+
     from screener.backtest_page import inject_early
     st = {"base": {"fwd12": {"n": 900, "mean": 1.0, "hit": 48.0}}, "period": ["2010-01-31", "x"],
           "signals": {"원가 급락": {"n_events": 23, "grade": "조금 나음",

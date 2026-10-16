@@ -2213,8 +2213,10 @@ def _diag_line() -> str:
     """수집 상태 한 줄 — HTML 주석 안에 들어가므로 '--' 와 꺾쇠를 지운다."""
     try:
         from .insider import RUN_BUDGET, STAT
-        from .sources import RECO_STAT
+        from .sources import FH_INS_STAT, RECO_STAT
         t = (f"form4 docs={STAT['docs']} doc_err={STAT['doc_err']} subs_err={STAT['subs_err']} "
+             f"sec_blocked={STAT['sec_blocked']} fh_ins ok={FH_INS_STAT['ok']} "
+             f"empty={FH_INS_STAT['empty']} err={FH_INS_STAT['err']} {FH_INS_STAT['why']} | "
              f"deferred={RUN_BUDGET.skipped} {STAT['err']} | reco key={RECO_STAT['key']} "
              f"ok={RECO_STAT['ok']} empty={RECO_STAT['empty']} err={RECO_STAT['err']} "
              f"{RECO_STAT['why']}")

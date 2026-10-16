@@ -438,12 +438,62 @@ def finnhub_reco(ticker: str) -> list[dict]:
         import time as _t
         _t.sleep(1.1)
     try:
-        out = _parse_reco(fetch_json(url, ttl_hours=24 * 8, retries=0))
+        out = _parse_reco(fetch_json(url, ttl_hours=24 * 8, retries=1))
         RECO_STAT["ok" if out else "empty"] += 1
         return out
     except (FetchError, TypeError) as e:
         RECO_STAT["err"] += 1
         RECO_STAT["why"] = RECO_STAT["why"] or str(e).replace(k, "***")[:70]
+        return []
+
+
+# 내부자 거래(Finnhub, SEC Form 4 재배포) — SEC 원문 서버가 클라우드 러너에 403 을
+# 줄 때의 대체 경로. 3일 캐시·실행당 60회 상한.
+_INS_BUDGET = {"left": 60}
+FH_INS_STAT = {"ok": 0, "empty": 0, "err": 0, "why": ""}
+
+
+def _parse_fh_insider(payload, ticker: str, cutoff: str) -> list[dict]:
+    out = []
+    for e in (payload or {}).get("data") or []:
+        try:
+            if e.get("transactionCode") != "P" or e.get("isDerivative"):
+                continue
+            ch = float(e.get("change") or 0)
+            pr = float(e.get("transactionPrice") or 0)
+            fd = str(e.get("filingDate") or "")[:10]
+        except (TypeError, ValueError):
+            continue
+        if ch <= 0 or not fd or fd < cutoff:
+            continue
+        out.append({"date": fd, "ticker": ticker, "owner": str(e.get("name") or ""),
+                    "role": "내부자", "shares": ch, "price": pr, "value": ch * pr,
+                    "tdate": str(e.get("transactionDate") or "")[:10]})
+    return out
+
+
+def finnhub_insider(ticker: str, since: str) -> list[dict]:
+    """since(YYYY-MM-DD) 이후 신고된 장내 매수(P). 키 없음·예산 초과·실패는 []."""
+    from .keys import finnhub_key
+    from .net import is_fresh
+    k = finnhub_key()
+    if not k:
+        return []
+    url = (f"https://finnhub.io/api/v1/stock/insider-transactions"
+           f"?symbol={urllib.parse.quote(ticker)}&from={since}&token={k}")
+    if not is_fresh(url, 72):
+        if _INS_BUDGET["left"] <= 0:
+            return []
+        _INS_BUDGET["left"] -= 1
+        import time as _t
+        _t.sleep(1.1)
+    try:
+        out = _parse_fh_insider(fetch_json(url, ttl_hours=72, retries=1), ticker, since)
+        FH_INS_STAT["ok" if out else "empty"] += 1
+        return out
+    except (FetchError, TypeError, AttributeError) as e:
+        FH_INS_STAT["err"] += 1
+        FH_INS_STAT["why"] = FH_INS_STAT["why"] or str(e).replace(k, "***")[:70]
         return []
 
 
