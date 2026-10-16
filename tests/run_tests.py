@@ -1472,6 +1472,42 @@ def f30_penetration_units():
     check("F30 100% 아님", pen[-1][1] < 95, f"{pen[-1][1]:.1f}")
 
 
+# ---------------------------------------------------------------- F54
+def f54_signal_strength_tiers():
+    """예측력 개선(2026-10-16) — 실물 신호만 세고 강도 단계로 정렬.
+
+    두 기간(~2018 / 2019~) 모두에서 평소보다 나았던 것만 규칙으로 썼다:
+    실물 2개 이상·시장 약세 중 실물 신호. 원가 급락·200일선·내부자 매수는 참고로 내림.
+    """
+    import screener.dashboard as db
+    from screener.early_backtest import FUND, TIERS, tier_of
+    from screener.signals import ThemeResult
+
+    check("F54 단계 규칙", tier_of({"재고 소진", "수주 반등"}, set(), 5) == "실물 2개 이상"
+          and tier_of({"수주 반등"}, set(), -3) == "시장 약세 중 실물 신호"
+          and tier_of({"수주 반등"}, {"수주 반등"}, 4) == "실물 신호 이어짐"
+          and tier_of({"수주 반등"}, set(), 4) == "실물 신호 막 켜짐"
+          and tier_of(set(), {"수주 반등"}, -3) is None, "")
+    check("F54 참고 신호는 실물이 아님", not ({"원가 급락", "주가 200일선 회복", "내부자 매수 집중"} & set(FUND)), "")
+    check("F54 마지막 달 빼기", db._trim_month([("2026-08-01", 1), ("2026-09-01", 2), ("2026-09-08", 3)])
+          == [("2026-08-01", 1)], "")
+
+    def mser(vals, y=2024):
+        return [(f"{y + (i // 12)}-{i % 12 + 1:02d}-01", v) for i, v in enumerate(vals)]
+    r = ThemeResult(name="T", thesis="", tickers=["AA"])
+    # 수주가 두 달 전부터 반등 → 지난달에도 켜져 있음(이어짐)
+    r.series = {"orders": mser([100, 99, 98, 97, 96, 95, 99, 102, 104, 106]), "mkt_ma200": 3.0}
+    s = db._strength(r)
+    check("F54 이어짐 판정(지난달 자료로 재현)", s["tier"] == "실물 신호 이어짐" and "수주 반등" in s["persist"], str(s))
+    r.series["mkt_ma200"] = -2.0
+    check("F54 시장 약세가 이어짐보다 우선", db._strength(r)["tier"] == "시장 약세 중 실물 신호", "")
+    q = ThemeResult(name="U", thesis="", tickers=["AA"])
+    q.series = {"ppi_in": mser([100, 100, 100, 100, 100, 100, 100, 95, 90, 85]), "mkt_ma200": 1.0}
+    h = db._early_html(q)
+    check("F54 참고 신호만 있으면 단계 없음 안내", "실물 신호 없음" in h and "참고" in h, h[:300])
+    check("F54 단계 순서 = 과거 성적 순", TIERS[0] == "실물 2개 이상" and TIERS[1] == "시장 약세 중 실물 신호", "")
+
+
 # ---------------------------------------------------------------- F53
 def f53_fmp_estimates():
     """FMP 추정치·목표주가 — 해석·한 달 전 비교·신호(2026-10-16 키 등록).
@@ -1949,7 +1985,8 @@ def main() -> int:
                f41_pead_point_in_time, f42_price_snapshot_fallback,
                f43_sample_window, f44_stable_axis_gate, f45_stable_axes_self_update, f46_theme_schema, f47_dashboard_tabs_and_honesty,
                f48_stock_detail_window, f49_backtest_easy_page, f50_flow_analysis, f51_early_signals,
-               f52_early_record_and_new_data, f53_fmp_estimates]:
+               f52_early_record_and_new_data, f53_fmp_estimates,
+               f54_signal_strength_tiers]:
         try:
             fn()
         except Exception as e:

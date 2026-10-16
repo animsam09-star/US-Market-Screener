@@ -617,6 +617,9 @@ def evaluate_theme(theme: dict, tmap: dict, bench: list, series_cache: dict) -> 
         "est": _est,
         "est_rev": _rev,
         "eps_trend": _ytr,
+        # 시장(벤치마크) 200일선 대비 % — 시장 약세 중 켜진 실물 신호가 과거 가장 강했다
+        "mkt_ma200": ((bench[-1][1] / (sum(v for _, v in bench[-200:]) / 200) - 1) * 100
+                      if bench and len(bench) >= 200 else None),
         "lead": _lead,
         "insider": _ins,
         "reco": [(k, v[0], v[1]) for k, v in sorted(_reco.items())],

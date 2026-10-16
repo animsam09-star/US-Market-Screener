@@ -816,6 +816,55 @@ def _early_signals(r: ThemeResult) -> list[tuple[str, str]]:
 
 
 NEW_B = "<b class='new'>NEW</b>"
+from .early_backtest import FUND as _FUND, TIERS as _TIERS, tier_of as _tier_of
+
+
+def _trim_month(series: list) -> list:
+    """마지막 달 관측을 뺀 시계열 — '지난달에도 켜져 있었나'를 지금 자료로 재현."""
+    if not series:
+        return series
+    last = str(series[-1][0])[:7]
+    return [x for x in series if str(x[0])[:7] != last]
+
+
+def _early_prev_fund(r: ThemeResult) -> set:
+    """한 달 전 시점의 실물 신호(월간 자료 마지막 달 제외, 매출은 직전 분기까지)."""
+    import copy
+    q = copy.copy(r)
+    S_ = dict(r.series)
+    for k in ("ppi_out", "ppi_in", "cap_util", "inv", "ship", "orders", "ip"):
+        if S_.get(k):
+            S_[k] = _trim_month(S_[k])
+    S_["lead"] = [(n, _trim_month(s)) for n, s in S_.get("lead") or []]
+    if S_.get("rev_yoy"):
+        S_["rev_yoy"] = S_["rev_yoy"][:-1]
+    for k in ("insider", "reco", "pt", "est_rev", "eps_trend", "price_index"):
+        S_[k] = []
+    q.series = S_
+    return {n for n, _ in _early_signals(q)} & set(_FUND)
+
+
+def _strength(r: ThemeResult) -> dict:
+    now = {n for n, _ in _early_signals(r)} & set(_FUND)
+    prev = _early_prev_fund(r) if now else set()
+    mkt = r.series.get("mkt_ma200")
+    t = _tier_of(now, prev, mkt)
+    return {"fund": now, "persist": now & prev, "tier": t, "mkt": mkt,
+            "rank": (_TIERS.index(t) if t in _TIERS else 9)}
+
+
+def _tier_rec(t: str | None) -> str:
+    """강도 단계의 과거 성적 — '과거 비슷한 경우 1년 뒤 시장보다 더 오른 비율 x% (평소 y%)'."""
+    if not t:
+        return ""
+    d = (EARLY_STATS.get("tiers") or {}).get(t) or {}
+    a, e, l_ = d.get("all"), d.get("early"), d.get("late")
+    base = ((EARLY_STATS.get("base") or {}).get("fwd12")) or {}
+    if not a or not base:
+        return ""
+    both = (f" · 2019년 전 {e['hit']:.0f}% / 후 {l_['hit']:.0f}%" if e and l_ else "")
+    return (f"과거 이런 경우 1년 뒤 시장보다 더 오른 비율 <b>{a['hit']:.0f}%</b> "
+            f"(평소 {base['hit']:.0f}%){both}")
 _GRADE_W = {"잘 맞았음": 3, "조금 나음": 2, "평소와 비슷": 1, "기록 적음": 1}
 _GRADE_CLS = {"잘 맞았음": "er-good", "조금 나음": "er-ok", "평소와 비슷": "er-flat",
               "기록 적음": "er-few"}
@@ -908,7 +957,7 @@ def _early_age(theme: str, name: str) -> tuple[str, bool]:
 
 def _early_sorted(r: ThemeResult) -> list[tuple[str, str]]:
     sig = _early_signals(r)
-    return sorted(sig, key=lambda x: (-_early_age(r.name, x[0])[1],
+    return sorted(sig, key=lambda x: (x[0] not in _FUND, -_early_age(r.name, x[0])[1],
                                       -_GRADE_W.get(_early_grade(x[0]), 0)))
 
 
@@ -916,16 +965,25 @@ def _early_html(r: ThemeResult) -> str:
     sig = _early_sorted(r)
     if not sig:
         return ""
+    stg = _strength(r)
     lis = []
     for n, d in sig:
         age, _new = _early_age(r.name, n)
-        lis.append(f"<li><div class='el-h'><b>{_e(n)}</b>{age}</div>"
+        kind = ("<span class='ek ek-f'>실물</span>" if n in _FUND
+                else "<span class='ek'>참고</span>")
+        if n in stg["persist"]:
+            age += "<span class='er-age'>지난달부터 이어짐</span>"
+        lis.append(f"<li><div class='el-h'>{kind}<b>{_e(n)}</b>{age}</div>"
                    f"<div class='el-d'>{_e(d)}</div>"
                    f"<div class='el-r'>{_early_rec(n)}{_early_last(r.name, n)}</div></li>")
     return ("<div class='early'><div class='early-h'>초기 신호 "
             f"<b>{len(sig)}</b><span>방향이 바뀌는 순간 — 틀릴 수 있지만 먼저 보이는 것. "
-            "옆 숫자는 과거에 같은 신호가 켜졌을 때의 성적</span></div><ul>"
-            + "".join(lis) + "</ul></div>")
+            "옆 숫자는 과거에 같은 신호가 켜졌을 때의 성적</span></div>"
+            + (f"<div class='es-tier'><b>{_e(stg['tier'])}</b> {_tier_rec(stg['tier'])}</div>"
+               if stg["tier"] else
+               "<div class='es-tier es-tier-ref'>실물 신호 없음 — 아래는 참고 신호(과거 예측력이 "
+               "평소 수준이거나 아직 기록이 없음)</div>")
+            + "<ul>" + "".join(lis) + "</ul></div>")
 
 
 def _early_log_html() -> str:
@@ -949,12 +1007,16 @@ def _early_log_html() -> str:
 def _early_board(ranked: list[ThemeResult]) -> str:
     """한눈에 상단 — 판정과 무관하게 초기 신호가 켜진 테마. 새로 켜진 것·과거에 잘 맞은 것 먼저."""
     rows = []
+    mkt_now = None
     for i, r in enumerate(ranked, 1):
         sig = _early_sorted(r)
+        if mkt_now is None:
+            mkt_now = r.series.get("mkt_ma200")
         if sig:
+            stg = _strength(r)
             nnew = sum(1 for n, _ in sig if _early_age(r.name, n)[1])
             w = sum(_GRADE_W.get(_early_grade(n), 0) for n, _ in sig)
-            rows.append((nnew, w, len(sig), r.catalyst_score or 0, i, r, sig))
+            rows.append((stg["rank"], -len(stg["fund"]), -nnew, -w, i, r, sig, stg))
     base = ((EARLY_STATS.get("base") or {}).get("fwd12")) or {}
     period = EARLY_STATS.get("period") or []
     rec_note = ""
@@ -964,26 +1026,50 @@ def _early_board(ranked: list[ThemeResult]) -> str:
     if not rows:
         return ("<section class='tv-card eb'><p class='nodata'>지금 방향이 바뀌는 "
                 "초기 신호가 켜진 테마가 없습니다.</p>" + _early_log_html() + "</section>")
-    rows.sort(key=lambda x: (-x[0], -x[1], -x[2], -x[3]))
+    rows.sort(key=lambda x: x[:5])
     items = []
-    for nnew, _w, n, _c, i, r, sig in rows[:12]:
+    for _rk, _nf, _nn, _w, i, r, sig, stg in rows[:14]:
+        n = len(stg["fund"])
         tag, cls, _t = _verdict(r)
         chips = ""
         for nm, _ in sig:
             nb = NEW_B if _early_age(r.name, nm)[1] else ""
             gc = _GRADE_CLS.get(_early_grade(nm), "er-none")
-            chips += f"<span class='es {gc}'>{nb}{_e(nm)}</span>"
+            ref = "" if nm in _FUND else " es-ref"
+            chips += f"<span class='es {gc}{ref}'>{nb}{_e(nm)}</span>"
+        if stg["tier"]:
+            chips = (f"<span class='et et-{_TIERS.index(stg['tier'])}'>{_e(stg['tier'])}</span>"
+                     + chips)
         items.append(
-            f"<a class='eb-row' href='#t{i}'><span class='eb-n'>{n}</span>"
+            f"<a class='eb-row' href='#t{i}'><span class='eb-n{'' if n else ' eb-n0'}'>{n}</span>"
             f"<span class='eb-nm'><b>{_e(r.name)}</b><span class='tv-chip'>{_e(tag)}</span></span>"
             f"<span class='eb-sig'>{chips}</span></a>")
     legend = ("<p class='eb-leg'><span class='es er-good'>잘 맞았음</span>"
               "<span class='es er-ok'>조금 나음</span><span class='es er-flat'>평소와 비슷</span>"
               "<span class='es er-few'>기록 적음</span><span class='es er-none'>기록 없음</span>"
               " — 같은 신호가 과거에 켜졌을 때의 성적</p>")
+    tiers = EARLY_STATS.get("tiers") or {}
+    tline = ""
+    if tiers and base:
+        parts = []
+        for k, t in enumerate(_TIERS):
+            a = (tiers.get(t) or {}).get("all")
+            if a:
+                parts.append(f"<span class='et et-{k}'>{_e(t)}</span> {a['hit']:.0f}%")
+        tline = ("<p class='eb-tiers'>강한 순서(과거 1년 뒤 시장보다 더 오른 비율, 평소 "
+                 f"{base['hit']:.0f}%): " + " · ".join(parts) + "</p>")
+    mline = ""
+    if mkt_now is not None:
+        if mkt_now < 0:
+            mline = ("<p class='eb-mkt eb-mkt-weak'>지금 시장(SPY)이 200일 평균선 아래입니다 "
+                     f"({mkt_now:+.0f}%). 과거엔 이런 때 켜진 실물 신호가 가장 잘 맞았습니다.</p>")
+        else:
+            mline = (f"<p class='eb-mkt'>지금 시장(SPY)은 200일 평균선 위({mkt_now:+.0f}%)입니다. "
+                     "시장 약세 때 켜지는 실물 신호가 과거 가장 강했습니다 — 지금은 해당 없음.</p>")
     return ("<section class='tv-card eb'><p class='eb-note'>판정과 상관없이, 데이터의 방향이 막 "
-            "바뀐 테마입니다. 틀릴 수 있지만 먼저 보고 판단하시라고 올립니다. 숫자 = 켜진 신호 개수, "
-            "NEW = 최근 7일 안에 새로 켜짐." + rec_note + "</p>" + legend
+            "바뀐 테마입니다. 틀릴 수 있지만 먼저 보고 판단하시라고 올립니다. 숫자 = 켜진 <b>실물 신호</b> "
+            "개수(재고·수주·생산·가동률·매출·선행 지표 — 과거에 예측력이 있던 것만 셉니다). 흐린 칩 = "
+            "참고 신호, NEW = 최근 7일 안에 새로 켜짐." + rec_note + "</p>" + tline + mline + legend
             + "".join(items) + _early_log_html() + "</section>")
 
 
@@ -1777,6 +1863,17 @@ CSS = """
 .er.er-flat,.er.er-few,.er.er-none{color:var(--muted)}.er.er-none{border-style:dashed}
 .er-t{color:var(--text-secondary)}.er-t b{color:var(--text-primary)}
 .er-last,.er-age{color:var(--muted);font-size:12px}
+.ek{font-size:10.5px;font-weight:800;padding:1px 6px;border-radius:4px;border:1px solid var(--tv-line);
+ color:var(--muted)}.ek-f{color:#fff;background:#2e9e6b;border-color:#2e9e6b}
+.es-ref{opacity:.55}.eb-n0{background:var(--tv-line)!important;color:var(--muted)!important}
+.et{display:inline-flex;align-items:center;font-size:12px;font-weight:800;padding:2px 9px;border-radius:999px;
+ color:#fff;background:#8a8f98}.et-0{background:#1f8a5b}.et-1{background:#2e9e6b}.et-2{background:#5b8def}
+.et-3{background:#8a8f98}
+.es-tier{margin:6px 0 2px;font-size:13px;color:var(--text-secondary)}.es-tier b{color:var(--text-primary);margin-right:6px}
+.es-tier-ref{color:var(--muted)}
+.eb-tiers{font-size:12.5px;color:var(--muted);margin:2px 0 6px;display:flex;flex-wrap:wrap;gap:4px 8px;align-items:center}
+.eb-mkt{font-size:13px;margin:4px 0 8px;color:var(--text-secondary)}
+.eb-mkt-weak{color:#2e9e6b;font-weight:700}
 @media (max-width:760px){.eb-row{grid-template-columns:34px 1fr}.eb-sig{grid-column:2}}
 /* ---- TradingView 톤: 검은 바탕·얇은 테두리·초록/빨강 등락 ---- */
 .viz-root{--tv-up:#089981;--tv-dn:#f23645;--tv-link:#2962ff;--tv-card:#ffffff;

@@ -343,6 +343,22 @@ def early_section(st: dict | None) -> str:
             f"<td><span class=\"tag {_EARLY_TAG.get(g, 'na')}\">{_e(g)}</span></td></tr>")
     if not rows:
         return ""
+    trows = []
+    for t, d in (st.get("tiers") or {}).items():
+        a, e, l_ = d.get("all"), d.get("early"), d.get("late")
+        if a:
+            trows.append(f"<tr><td><b>{_e(t)}</b></td><td>{a['n']}</td><td><b>{a['hit']:.0f}%</b></td>"
+                         f"<td>{a['mean']:+.1f}%p</td><td>{(e or {}).get('hit', 0):.0f}% / "
+                         f"{(l_ or {}).get('hit', 0):.0f}%</td></tr>")
+    tier_html = ""
+    if trows:
+        tier_html = ('<h3 style="margin:22px 0 8px">더 잘 맞히는 조합 — 강도 단계</h3>'
+                     '<p style="margin:0 0 8px">실물 신호(재고·수주·생산·가동률·매출·선행 지표)만 세고, '
+                     "앞 기간(~2018)에서 찾은 규칙이 뒤 기간(2019~)에도 맞는지 확인한 것만 남겼습니다. "
+                     "원가 급락·200일선 회복·내부자 매수는 평소 수준이라 ‘참고’로 내렸습니다.</p>"
+                     '<table class="raw"><tr><th>단계</th><th>테마×달 관측</th><th>시장보다 더 오른 비율</th>'
+                     "<th>평균(시장 대비)</th><th>2019년 전 / 후</th></tr>" + "".join(trows) + "</table>"
+                     '<p class="meta">관측은 매달 세므로 같은 상승이 몇 달 겹쳐 세어집니다 — 단계끼리의 상대 비교로 보세요.</p>')
     return (f"<h2>초기 신호는 맞았나 — 방향이 바뀌는 순간</h2>"
             f"<div class=\"card\"><p style=\"margin:0 0 10px\">대시보드 위쪽 ‘먼저 보이는 가능성’에 뜨는 "
             f"신호들입니다. {_e((per[0] or '')[:4])}년부터 매달 그때 알 수 있던 자료로 다시 계산해, "
@@ -354,7 +370,8 @@ def early_section(st: dict | None) -> str:
             f"<p class=\"meta\" style=\"margin:8px 0 0\">‘잘 맞았음’ = 평소보다 더 오른 비율이 8%p 이상 높고, "
             f"2019년 전·후 두 시기 모두 평소보다 나았던 것. 켜진 횟수 8번 미만은 ‘기록 적음’. "
             f"같은 신호가 12개월 안에 다시 켜지면 한 번만 셌습니다. 내부자 매수는 SEC 일괄 자료"
-            f"(2009년~), 애널리스트 의견은 과거 자료가 없어 오늘부터 기록합니다.</p></div>\n")
+            f"(2009년~), 애널리스트 의견·EPS 추정치는 과거 자료가 없어 오늘부터 기록합니다.</p>"
+            + tier_html + "</div>\n")
 
 
 def inject_early(page: str, st: dict | None) -> str:

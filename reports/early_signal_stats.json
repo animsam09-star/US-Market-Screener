@@ -366,6 +366,96 @@
    "themes": 16
   }
  },
+ "fund": [
+  "재고 소진",
+  "수주 반등",
+  "생산·활동 반등",
+  "가동률 바닥 탈출",
+  "매출 가속 전환",
+  "선행 지표 반등"
+ ],
+ "tiers": {
+  "실물 2개 이상": {
+   "all": {
+    "n": 210,
+    "mean": 15.13,
+    "median": 9.04,
+    "hit": 64.8
+   },
+   "early": {
+    "n": 91,
+    "mean": 3.62,
+    "median": 2.73,
+    "hit": 57.1
+   },
+   "late": {
+    "n": 119,
+    "mean": 23.93,
+    "median": 14.59,
+    "hit": 70.6
+   }
+  },
+  "시장 약세 중 실물 신호": {
+   "all": {
+    "n": 147,
+    "mean": 16.77,
+    "median": 11.47,
+    "hit": 66.7
+   },
+   "early": {
+    "n": 80,
+    "mean": 13.0,
+    "median": 9.07,
+    "hit": 63.8
+   },
+   "late": {
+    "n": 67,
+    "mean": 21.27,
+    "median": 23.17,
+    "hit": 70.1
+   }
+  },
+  "실물 신호 이어짐": {
+   "all": {
+    "n": 397,
+    "mean": 8.91,
+    "median": 2.92,
+    "hit": 53.4
+   },
+   "early": {
+    "n": 229,
+    "mean": 0.97,
+    "median": 1.72,
+    "hit": 52.0
+   },
+   "late": {
+    "n": 168,
+    "mean": 19.73,
+    "median": 5.16,
+    "hit": 55.4
+   }
+  },
+  "실물 신호 막 켜짐": {
+   "all": {
+    "n": 453,
+    "mean": 10.21,
+    "median": 1.18,
+    "hit": 51.9
+   },
+   "early": {
+    "n": 266,
+    "mean": 0.6,
+    "median": -2.9,
+    "hit": 47.4
+   },
+   "late": {
+    "n": 187,
+    "mean": 23.87,
+    "median": 6.9,
+    "hit": 58.3
+   }
+  }
+ },
  "missing_series": {
   "eia:PET.WPULEUS3.W": "eia:PET.WPULEUS3.W: EIA 키 없음 — PET.WPULEUS3.W 조회 불가 (환경변수 EIA_API_KEY 또는 eia_key.txt)",
   "eia:PET.WGTSTUS1.W": "eia:PET.WGTSTUS1.W: EIA 키 없음 — PET.WGTSTUS1.W 조회 불가 (환경변수 EIA_API_KEY 또는 eia_key.txt)",

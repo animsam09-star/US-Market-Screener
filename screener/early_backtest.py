@@ -46,6 +46,9 @@ SERIES_KEYS = (("ppi_out", "ppi_output"), ("ppi_in", "ppi_input"),
                ("ip", "industrial_production"))
 
 INSIDER: list = []     # 과거 장내 매수(data/insider_hist.json) — run() 이 채운다
+# 실물 신호 — 실제 경제 활동의 꺾임. 이것만 셀 때 예측력이 있었다(두 기간 모두).
+FUND = ("재고 소진", "수주 반등", "생산·활동 반등", "가동률 바닥 탈출", "매출 가속 전환",
+        "선행 지표 반등")
 REARM_MONTHS = 12      # 같은 신호가 이 안에 다시 켜지면 같은 사건으로 본다
 MIN_N = 8              # 이보다 적으면 '기록 적음'
 SPLIT = date(2019, 1, 1)
@@ -226,6 +229,46 @@ def grade(s: dict | None, base: dict | None, robust: bool) -> str:
     return "평소와 비슷"
 
 
+def tier_of(fund_now: set, fund_prev: set, mkt_ma200) -> str | None:
+    """강도 단계 — 화면과 백테스트가 같은 규칙을 쓴다(dashboard 가 import)."""
+    if not fund_now:
+        return None
+    if len(fund_now) >= 2:
+        return "실물 2개 이상"
+    if mkt_ma200 is not None and mkt_ma200 < 0:
+        return "시장 약세 중 실물 신호"
+    if fund_now & fund_prev:
+        return "실물 신호 이어짐"
+    return "실물 신호 막 켜짐"
+
+
+# 순서 = 과거 성적 순(2026-10-16: 65% · 65% · 56% · 52%, 평소 52%)
+TIERS = ("실물 2개 이상", "시장 약세 중 실물 신호", "실물 신호 이어짐", "실물 신호 막 켜짐")
+
+
+def tier_stats(recs: list[dict]) -> dict:
+    """테마×달 관측을 강도 단계로 나눠 1년 뒤 성적(전체·앞·뒤 기간)."""
+    by: dict[str, list] = {}
+    for r in recs:
+        by.setdefault(r["theme"], []).append(r)
+    lab: dict[str, list] = {t: [] for t in TIERS}
+    for rs in by.values():
+        rs.sort(key=lambda r: r["date"])
+        prev: set = set()
+        for r in rs:
+            now = set(r["on"]) & set(FUND)
+            t = tier_of(now, prev, r.get("mkt_ma200"))
+            if t:
+                lab[t].append(r)
+            prev = now
+    out = {}
+    for t, rs in lab.items():
+        out[t] = {"all": _st([r["fwd12"] for r in rs]),
+                  "early": _st([r["fwd12"] for r in rs if r["date"] < SPLIT.isoformat()]),
+                  "late": _st([r["fwd12"] for r in rs if r["date"] >= SPLIT.isoformat()])}
+    return out
+
+
 def analyze(result: dict) -> dict:
     recs = result["records"]
     evs = events(recs)
@@ -251,16 +294,27 @@ def analyze(result: dict) -> dict:
             "split": SPLIT.isoformat(), "rearm_months": REARM_MONTHS, "min_n": MIN_N,
             "base": {"fwd12": base12, "fwd6": base6, "early": early_b, "late": late_b,
                      "n_obs": len(recs)},
-            "signals": sigs, "missing_series": result.get("missing_series", {})}
+            "signals": sigs, "fund": list(FUND), "tiers": tier_stats(recs),
+            "missing_series": result.get("missing_series", {})}
 
 
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--start", default="2010-01-31")
     ap.add_argument("--end", default=None)
+    ap.add_argument("--reanalyze", action="store_true",
+                    help="재계산 없이 cache/early_records.json 으로 통계만 다시")
     args = ap.parse_args()
-    res = run(date.fromisoformat(args.start),
-              date.fromisoformat(args.end) if args.end else None)
+    if args.reanalyze:
+        from .net import CACHE_DIR
+        recs = json.loads((CACHE_DIR / "early_records.json").read_text(encoding="utf-8"))
+        old = json.loads((ROOT / "reports" / "early_signal_stats.json").read_text(encoding="utf-8"))
+        res = {"records": recs, "missing_series": old.get("missing_series", {}),
+               "start": recs[0]["date"] if recs else None,
+               "end": max(r["date"] for r in recs) if recs else None}
+    else:
+        res = run(date.fromisoformat(args.start),
+                  date.fromisoformat(args.end) if args.end else None)
     if not res["records"]:
         print("관측 0건 — 데이터 수집 실패")
         return 1
@@ -270,9 +324,10 @@ def main() -> int:
     (rep / "early_signal_stats.json").write_text(
         json.dumps(ana, ensure_ascii=False, indent=1), encoding="utf-8")
     # 분석용 전체 관측(테마×달, 켜진 신호·주가 위치·결과) — 저장소 밖(cache)
-    from .net import CACHE_DIR
-    (CACHE_DIR / "early_records.json").write_text(
-        json.dumps(res["records"], ensure_ascii=False), encoding="utf-8")
+    if not args.reanalyze:
+        from .net import CACHE_DIR
+        (CACHE_DIR / "early_records.json").write_text(
+            json.dumps(res["records"], ensure_ascii=False), encoding="utf-8")
     (rep / "early_signal_events.json").write_text(
         json.dumps(events(res["records"]), ensure_ascii=False, indent=0), encoding="utf-8")
     b = ana["base"]["fwd12"]
