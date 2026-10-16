@@ -87,6 +87,8 @@ class _Budget:
 
 
 RUN_BUDGET = _Budget(FETCH_BUDGET)   # 프로세스(=실행 1회) 단위
+# 배포본 진단용(페이지 숨은 표식) — 문서 몇 건 읽었고 몇 건 실패했나
+STAT = {"subs_err": 0, "docs": 0, "doc_err": 0, "err": ""}
 
 
 def live_buys(ticker: str, cik: int, today: date | None = None,
@@ -96,7 +98,9 @@ def live_buys(ticker: str, cik: int, today: date | None = None,
     try:
         sub = fetch_json(f"https://data.sec.gov/submissions/CIK{cik:010d}.json",
                          ttl_hours=24)
-    except FetchError:
+    except FetchError as e:
+        STAT["subs_err"] += 1
+        STAT["err"] = STAT["err"] or f"subs {str(e)[:60]}"
         return []
     rec = (sub.get("filings") or {}).get("recent") or {}
     forms = rec.get("form") or []
@@ -118,7 +122,10 @@ def live_buys(ticker: str, cik: int, today: date | None = None,
             budget.left -= 1
         try:
             xml = fetch_text(url, ttl_hours=24 * 365)
-        except FetchError:
+            STAT["docs"] += 1
+        except FetchError as e:
+            STAT["doc_err"] += 1
+            STAT["err"] = STAT["err"] or f"doc {str(e)[:60]}"
             continue
         for b in parse_form4(xml):
             b.update({"date": fd, "ticker": ticker})

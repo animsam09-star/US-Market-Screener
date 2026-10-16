@@ -2209,6 +2209,20 @@ def _theme_chips(ranked: list[ThemeResult]) -> str:
     return '<div class="chiprow">' + "".join(chips) + "</div>"
 
 
+def _diag_line() -> str:
+    """수집 상태 한 줄 — HTML 주석 안에 들어가므로 '--' 와 꺾쇠를 지운다."""
+    try:
+        from .insider import RUN_BUDGET, STAT
+        from .sources import RECO_STAT
+        t = (f"form4 docs={STAT['docs']} doc_err={STAT['doc_err']} subs_err={STAT['subs_err']} "
+             f"deferred={RUN_BUDGET.skipped} {STAT['err']} | reco key={RECO_STAT['key']} "
+             f"ok={RECO_STAT['ok']} empty={RECO_STAT['empty']} err={RECO_STAT['err']} "
+             f"{RECO_STAT['why']}")
+    except Exception as e:
+        t = f"diag {type(e).__name__}"
+    return t.replace("--", "-").replace(">", " ").replace("<", " ")
+
+
 def build_html(results: list[ThemeResult], *, benchmark: str = "SPY") -> str:
     ranked = sorted(results, key=priority)
     now = datetime.now().strftime("%Y-%m-%d %H:%M")
@@ -2220,7 +2234,8 @@ def build_html(results: list[ThemeResult], *, benchmark: str = "SPY") -> str:
     # (Finnhub 애널리스트 의견·EIA 리그 수)을 배포본에서 확인하는 표식. 화면에는 안 보인다.
     _dstat = (f"<!-- early-data: reco={sum(1 for r in ranked if r.series.get('reco'))} "
               f"insider={sum(len(r.series.get('insider') or []) for r in ranked)} "
-              f"lead={sum(len(r.series.get('lead') or []) for r in ranked)} -->")
+              f"lead={sum(len(r.series.get('lead') or []) for r in ranked)} "
+              f"{_diag_line()} -->")
 
     # 판독 건강도 — 데이터가 통째로 안 들어온 것을 조용히 넘기지 않는다.
     # 주가가 죽으면 미반영 축 4개 중 2개가 사라지는데, 점수만 보면 눈치채기 어렵다.

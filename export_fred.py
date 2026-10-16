@@ -37,6 +37,10 @@ def collect_ids() -> list[str]:
             v = str(v)
             if v and not v.lower().startswith("eia:"):
                 ids.add(v.split(":", 1)[-1] if ":" in v else v)
+        for it in th.get("early") or []:      # 초기 신호 전용 선행 지표도 스냅샷에
+            v = str(it.get("id") or "")
+            if v and not v.lower().startswith("eia:"):
+                ids.add(v.split(":", 1)[-1] if ":" in v else v)
         cs = (th.get("customers") or {}).get("series")
         if cs and not str(cs).lower().startswith("eia:"):
             ids.add(str(cs))

@@ -1581,6 +1581,17 @@ def f52_early_record_and_new_data():
     cfg = yaml.safe_load((ROOT / "themes.yaml").read_text(encoding="utf-8"))
     ok = all(it.get("id") and it.get("name") for th in cfg["themes"] for it in (th.get("early") or []))
     check("F52 themes.yaml early: id·name 필수", ok, "")
+    # 러너는 FRED 에 막히면 동봉 스냅샷으로 대체한다 — 선행 지표가 스냅샷에서 빠지면
+    # 배포본에서만 조용히 사라진다(2026-10-16 실측: 8개 중 3개만 들어옴)
+    import sys as _sys
+    _sys.path.insert(0, str(ROOT))
+    from export_fred import collect_ids
+    snap = __import__("json").loads((ROOT / "data" / "fred_snapshot.json").read_text(encoding="utf-8"))
+    snap_ids = set(snap.get("series", snap).keys()) if isinstance(snap, dict) else set()
+    want = {str(it["id"]) for th in cfg["themes"] for it in (th.get("early") or [])
+            if not str(it["id"]).lower().startswith("eia:")}
+    check("F52 선행 지표가 스냅샷 수집 대상에 포함", want <= set(collect_ids()), str(want - set(collect_ids())))
+    check("F52 선행 지표가 동봉 스냅샷에 실제로 있음", want <= snap_ids, str(want - snap_ids))
 
     from screener.backtest_page import inject_early
     st = {"base": {"fwd12": {"n": 900, "mean": 1.0, "hit": 48.0}}, "period": ["2010-01-31", "x"],
