@@ -576,6 +576,11 @@ def per_stock(tickers: list[str], tmap: dict, prices: dict, bench: list) -> list
         for key, back in (("ret_1m", 21), ("ret_3m", 63)):
             if len(px) > back + 2:
                 row[key] = 100.0 * (px[-1][1] / px[-back][1] - 1.0)
+        if px:
+            # 카드 미니 차트용 — 최근 1년을 주 단위로 솎아 보관(약 50점)
+            tail = px[-252:]
+            row["last"] = tail[-1][1]
+            row["spark"] = [round(v, 4) for _, v in tail[::5]] + [tail[-1][1]]
         if len(px) > 260:
             back = min(len(px), 252)
             abs12 = 100.0 * (px[-1][1] / px[-back][1] - 1.0)

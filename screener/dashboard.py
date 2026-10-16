@@ -147,7 +147,9 @@ def _scatter(results: list[ThemeResult], nums: dict | None = None) -> str:
     if not pts:
         return '<p class="nodata">산점도를 그릴 데이터가 부족합니다.</p>'
 
-    W, H = 880, 560
+    # 사분면은 정사각형이어야 한다 — 가로·세로 1점의 길이가 다르면
+    # 네 구역의 넓이도, 점 사이 거리도 왜곡돼 보인다("비율이 안 맞잖아").
+    W, H = 706, 698
     PL, PR, PT, PB = 66, 30, 30, 58
     iw, ih = W - PL - PR, H - PT - PB
 
@@ -498,6 +500,115 @@ def _signal_strip(ranked: list[ThemeResult]) -> str:
           + " ".join(f"<b>{_e(t)}</b>" for t in picks) + "</span>") if picks else ""
     return (f'<div class="sigrow"><span class="sig-k">지금 신호</span>{lead}'
             f'<span class="sig-sub">{_e(sub)}</span>{pk}</div>')
+
+
+def _tv_chg(v: float | None, suf: str = "%") -> str:
+    if v is None:
+        return '<span class="tv-flat">—</span>'
+    cls = "tv-up" if v > 0 else ("tv-dn" if v < 0 else "tv-flat")
+    return f'<span class="{cls}">{v:+.1f}{suf}</span>'
+
+
+_TV_N = [0]
+
+
+def _tv_area(vals: list, w: int = 520, h: int = 130) -> str:
+    """TradingView 식 영역 차트 — 오르면 초록, 내리면 빨강 그라데이션."""
+    vals = [v for v in vals if v is not None]
+    if len(vals) < 3:
+        return '<div class="tv-area-na">주가 이력 없음</div>'
+    _TV_N[0] += 1
+    gid = f"tvg{_TV_N[0]}"
+    lo, hi = min(vals), max(vals)
+    rng = (hi - lo) or 1.0
+    step = w / (len(vals) - 1)
+    xy = [(i * step, h - 6 - (v - lo) / rng * (h - 14)) for i, v in enumerate(vals)]
+    col = "var(--tv-up)" if vals[-1] >= vals[0] else "var(--tv-dn)"
+    line = " ".join(f"{x:.1f},{y:.1f}" for x, y in xy)
+    area = f"0,{h} {line} {w},{h}"
+    return (f'<svg class="tv-area" viewBox="0 0 {w} {h}">'
+            f'<defs><linearGradient id="{gid}" x1="0" y1="0" x2="0" y2="1">'
+            f'<stop offset="0" style="stop-color:{col};stop-opacity:.32"/>'
+            f'<stop offset="1" style="stop-color:{col};stop-opacity:0"/>'
+            f'</linearGradient></defs>'
+            f'<polygon points="{area}" style="fill:url(#{gid})"/>'
+            f'<polyline points="{line}" style="fill:none;stroke:{col};stroke-width:1.8"/>'
+            f'<circle cx="{xy[-1][0]:.1f}" cy="{xy[-1][1]:.1f}" r="3.2" style="fill:{col}"/>'
+            '</svg>')
+
+
+def _tv_1y(r: ThemeResult) -> float | None:
+    """테마 그룹 주가(동일가중) 1년 등락 %."""
+    s_ = r.series.get("price_index") or []
+    if len(s_) < 30:
+        return None
+    back = s_[-252] if len(s_) > 252 else s_[0]
+    try:
+        return 100.0 * (s_[-1][1] / back[1] - 1.0)
+    except (ZeroDivisionError, TypeError, IndexError):
+        return None
+
+
+def _tv_theme_list(ranked: list[ThemeResult], nums: dict, limit: int = 12) -> str:
+    """'주요 지수' 자리 — 판정 순 상위 테마. 추천은 금색 번호 아이콘."""
+    rows = []
+    for i, r in enumerate(ranked[:limit], 1):
+        tag, cls, _t = _verdict(r)
+        n = nums.get(r.name)
+        vk = {"볼 만함": "vk-best", "지켜볼 만": "vk-watch", "이미 반영": "vk-priced",
+              "되돌림": "vk-rebound", "이유 약함": "vk-weak"}.get(tag, "vk-none")
+        ico = (f'<span class="tv-ico pick">{n}</span>' if n
+               else f'<span class="tv-ico {vk}">{i}</span>')
+        cs = "—" if r.catalyst_score is None else f"{r.catalyst_score:.0f}"
+        us = "—" if r.unpriced_score is None else f"{r.unpriced_score:.0f}"
+        rows.append(
+            f'<a class="tv-row" href="#t{i}">{ico}'
+            f'<span class="tv-nm"><b>{_e(r.name)}</b>'
+            f'<span class="tv-chip {cls}">{_e(tag)}</span></span>'
+            f'<span class="tv-val"><b>촉매 {cs} · 미반영 {us}</b>'
+            f'<em>1년 {_tv_chg(_tv_1y(r))}</em></span></a>')
+    return ('<section class="tv-card tv-list"><h3 class="tv-ch">주요 테마</h3>'
+            + "".join(rows)
+            + '<a class="tv-more" href="#" data-goto="pane-table">'
+              f'모든 테마 보기 ({len(ranked)}) ›</a></section>')
+
+
+def _tv_pick_cards(ranked: list[ThemeResult]) -> str:
+    """추천 종목 카드 3장 — 1년 주가 영역 차트 + 숫자 목록."""
+    top = top_pick_rows(ranked)
+    if not top:
+        return ('<section class="tv-card"><p class="nodata">수혜·여력 조건을 모두 '
+                '만족하는 추천 종목이 지금은 없습니다.</p></section>')
+    pos = {r.name: i for i, r in enumerate(ranked, 1)}
+    cards = []
+    for k, (_o, _p, r, s_, tag) in enumerate(top, 1):
+        t = s_["ticker"]
+        name = NAMES.get(t.upper(), "")
+        last = s_.get("last")
+        price = f"{last:,.2f}" if last is not None else "—"
+
+        def line(label, val_html):
+            return (f'<div class="tv-li"><span>{label}</span>'
+                    f'<span class="tv-li-v">{val_html}</span></div>')
+
+        num = lambda key, fmt: (fmt.format(s_[key]) if s_.get(key) is not None
+                                else "—")
+        cards.append(
+            f'<section class="tv-card tv-pick">'
+            f'<div class="tv-ph"><span class="tv-ico pick">{k}</span>'
+            f'<b>{_e(name or t)}</b><span class="tv-chip tk">{_e(t)}</span></div>'
+            f'<div class="tv-px">{price}<small>USD</small>'
+            f'<span class="tv-px-c">12개월 {_tv_chg(s_.get("abs_12m"))}</span></div>'
+            f'{_tv_area(s_.get("spark") or [])}'
+            + line("테마", f'{_e(r.name)} <span class="tv-chip">{_e(tag)}</span>')
+            + line("수혜 · 여력", f'{num("benefit", "{:.0f}")} · {num("upside", "{:.0f}")}')
+            + line("매출 YoY", _tv_chg(s_.get("rev_yoy")))
+            + line("이익률 개선", _tv_chg(s_.get("opm_delta"), "%p"))
+            + line("1개월 · 3개월",
+                   f'{_tv_chg(s_.get("ret_1m"))} · {_tv_chg(s_.get("ret_3m"))}')
+            + f'<a class="tv-more" href="#t{pos.get(r.name, 1)}">'
+              f'{_e(r.name)} 테마 카드 보기 ›</a></section>')
+    return '<div class="tv-g3">' + "".join(cards) + "</div>"
 
 
 def _sector_picks(ranked: list[ThemeResult]) -> str:
@@ -1101,7 +1212,7 @@ CSS = """
  .viz-root .wrap{max-width:min(96vw,2900px)}
  .hero{display:grid;grid-template-columns:minmax(0,1.75fr) minmax(0,1fr);
   gap:0 36px;align-items:start}
- .hero-sc .scatter{width:100%;height:auto}
+ .hero-sc .scatter{width:100%;max-width:760px;height:auto;display:block;margin:0 auto}
  .prio-l{columns:2;column-gap:30px}
  .prio-l li{break-inside:avoid}
  .cardcols{columns:2;column-gap:28px}
@@ -1129,6 +1240,71 @@ CSS = """
 .chip.v-good{border-color:var(--good)}.chip.v-bad{border-color:var(--critical)}
 .card.flash{outline:3px solid var(--seq-450);transition:outline .2s}
 .pt.pick{stroke:#c9a227;stroke-width:3}
+/* ---- TradingView 톤: 검은 바탕·얇은 테두리·초록/빨강 등락 ---- */
+.viz-root{--tv-up:#089981;--tv-dn:#f23645;--tv-link:#2962ff;--tv-card:#ffffff;
+ --tv-line:#e0e3eb;--tv-hover:#f0f3fa;--tv-chip:#f0f3fa}
+:root[data-theme="dark"] .viz-root{color-scheme:dark;--surface-1:#000;--plane:#000;
+ --text-primary:#d1d4dc;--text-secondary:#9598a1;--muted:#787b86;--grid:#1e222d;
+ --axis:#2a2e39;--border:#2a2e39;--navy:#e5e7ee;--seq-450:#2962ff;--seq-200:#1e3a8a;
+ --tv-up:#22ab94;--tv-dn:#f23645;--tv-link:#3179f5;--tv-card:#000;--tv-line:#2a2e39;
+ --tv-hover:#131722;--tv-chip:#2a2e39}
+:root[data-theme="dark"] body{background:#000}
+.viz-root .tv-h{font-size:25px;font-weight:800;margin:30px 0 14px;color:var(--text-primary)}
+.viz-root .tv-h::after{content:" ›";font-weight:700}
+.tv-card{background:var(--tv-card);border:1px solid var(--tv-line);border-radius:14px;
+ padding:16px 18px}
+.tv-g1{display:grid;grid-template-columns:minmax(0,1.6fr) minmax(0,1fr);gap:16px;
+ align-items:stretch}
+.tv-g3{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:16px}
+.tv-g2{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px;margin-top:30px}
+@media (max-width:1100px){.tv-g1,.tv-g3,.tv-g2{grid-template-columns:1fr}}
+.tv-main .sigrow{border:0;background:none;padding:2px 2px 10px;margin:0;border-radius:0}
+.tv-main .scatter{width:100%;max-width:820px;height:auto;display:block;margin:0 auto}
+.tv-main .legend{margin-top:6px}
+.tv-ch{margin:0 0 6px;font-size:17px;font-weight:800;color:var(--text-primary)}
+.tv-row{display:grid;grid-template-columns:38px minmax(0,1fr) auto;gap:12px;
+ align-items:center;padding:11px 6px;border-bottom:1px solid var(--tv-line);
+ text-decoration:none;color:inherit;border-radius:8px}
+.tv-row:hover{background:var(--tv-hover)}
+.tv-ico{width:32px;height:32px;border-radius:50%;display:flex;align-items:center;
+ justify-content:center;font-weight:800;font-size:14px;color:#fff;background:#4c525e}
+.tv-ico.pick{background:#c9a227}
+.tv-ico.vk-best{background:var(--tv-up)}.tv-ico.vk-watch{background:#c9a227}
+.tv-ico.vk-priced{background:#2962ff}.tv-ico.vk-rebound{background:var(--tv-dn)}
+.tv-ico.vk-weak{background:#5d606b}.tv-ico.vk-none{background:#363a45}
+.tv-nm{display:flex;flex-direction:column;gap:4px;min-width:0}
+.tv-nm b{font-size:15px;color:var(--text-primary);white-space:nowrap;overflow:hidden;
+ text-overflow:ellipsis}
+.tv-chip{display:inline-block;align-self:flex-start;font-size:11.5px;font-weight:700;
+ padding:2px 7px;border-radius:5px;background:var(--tv-chip);color:var(--text-secondary)}
+.tv-chip.tk{margin-left:8px}
+.tv-val{display:flex;flex-direction:column;align-items:flex-end;gap:4px;white-space:nowrap}
+.tv-val b{font-size:14px;font-weight:700;color:var(--text-primary)}
+.tv-val em{font-style:normal;font-size:13px;color:var(--muted)}
+.tv-up{color:var(--tv-up);font-weight:700}.tv-dn{color:var(--tv-dn);font-weight:700}
+.tv-flat{color:var(--muted)}
+.tv-more{display:inline-block;margin-top:12px;font-size:14px;font-weight:700;
+ color:var(--tv-link);text-decoration:none}
+.tv-more:hover{text-decoration:underline}
+.tv-ph{display:flex;align-items:center;gap:10px}
+.tv-ph b{font-size:16px;color:var(--text-primary);white-space:nowrap;overflow:hidden;
+ text-overflow:ellipsis}
+.tv-px{margin:10px 0 2px;font-size:24px;font-weight:800;color:var(--text-primary)}
+.tv-px small{font-size:11px;font-weight:600;color:var(--muted);margin:0 10px 0 4px}
+.tv-px-c{font-size:14px;font-weight:600;color:var(--muted)}
+.tv-area{width:100%;height:auto;display:block;margin:6px 0 10px}
+.tv-area-na{height:90px;display:flex;align-items:center;justify-content:center;
+ color:var(--muted);font-size:13px}
+.tv-li{display:flex;justify-content:space-between;align-items:center;gap:12px;
+ padding:9px 2px;border-bottom:1px solid var(--tv-line);font-size:14px}
+.tv-li>span:first-child{color:var(--text-secondary)}
+.tv-li-v{font-weight:700;color:var(--text-primary);text-align:right}
+.tv-flow .prio,.tv-flow .changes,.tv-flow>div{border:0!important;background:none!important;
+ padding:0!important;margin:0!important;box-shadow:none!important}
+:root[data-theme="dark"] .viz-root .tabbar{background:#000}
+:root[data-theme="dark"] .viz-root .tabbtn{background:#000;border-color:#2a2e39;color:#d1d4dc}
+:root[data-theme="dark"] .viz-root .tabbtn.on{background:#2962ff;border-color:#2962ff;color:#fff}
+
 .track{margin:2px 0 8px;font-size:13px;line-height:1.55;color:var(--text-secondary);
  border-left:3px solid var(--cyan);padding-left:10px}
 .prio-stat{margin-left:auto;font-size:12.5px;color:var(--text-secondary);white-space:nowrap}
@@ -1360,6 +1536,10 @@ TAB_JS = """
   document.querySelectorAll('.tabbtn[data-pane]').forEach(function(b){
     b.addEventListener('click', function(){ show(b.dataset.pane); window.scrollTo(0,0); });
   });
+  document.querySelectorAll('[data-goto]').forEach(function(b){
+    b.addEventListener('click', function(e){ e.preventDefault();
+      show(b.dataset.goto); window.scrollTo(0,0); });
+  });
   // '무엇부터 볼까'·칩의 #tN 링크 → 상세 탭으로 전환 후 그 카드로 이동
   document.addEventListener('click', function(e){
     var a=e.target.closest&&e.target.closest('a[href^="#t"]');
@@ -1376,6 +1556,22 @@ TAB_JS = """
   });
   show('pane-glance');
 })();
+"""
+
+
+# 라이트/다크 — 기본은 다크(TradingView 참고 화면), 선택은 기억한다.
+# f-string 밖 상수: JS 중괄호를 f-string 이 삼키지 않게.
+THEME_JS = """
+(function(){var r=document.documentElement,t='dark';
+try{t=localStorage.getItem('scr-theme')||'dark'}catch(e){}
+r.dataset.theme=t;
+document.addEventListener('DOMContentLoaded',function(){
+ var b=document.getElementById('themeBtn'); if(!b) return;
+ b.addEventListener('click',function(){
+  var n=r.dataset.theme==='dark'?'light':'dark'; r.dataset.theme=n;
+  try{localStorage.setItem('scr-theme',n)}catch(e){}
+ });
+});})();
 """
 
 
@@ -1439,10 +1635,9 @@ def build_html(results: list[ThemeResult], *, benchmark: str = "SPY") -> str:
 <html lang="ko"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>미국 섹터 스크리너 — 촉매 × 미반영</title>
-<style>{CSS}</style></head>
+<style>{CSS}</style><script>{THEME_JS}</script></head>
 <body><div class="viz-root"><div class="wrap">
-<button class="toggle" onclick="var r=document.documentElement;
-r.dataset.theme=r.dataset.theme==='dark'?'light':'dark'">라이트/다크</button>
+<button class="toggle" id="themeBtn">라이트/다크</button>
 
 <h1>미국 섹터 스크리너</h1>
 <p class="sub">촉매(왜 오르나) × 미반영(왜 아직 안 올랐나)의 교집합으로 테마를 고른다.
@@ -1461,18 +1656,20 @@ r.dataset.theme=r.dataset.theme==='dark'?'light':'dark'">라이트/다크</butto
 </nav>
 
 <section id="pane-glance">
+<h2 class="tv-h">지금 신호</h2>
+<div class="tv-g1">
+<section class="tv-card tv-main">
 {_signal_strip(ranked)}
-<div class="hero">
-<div class="hero-sc">
-<div class="panel">{_scatter(ranked, _pick_numbers(ranked))}</div>
+{_scatter(ranked, _pick_numbers(ranked))}
+</section>
+{_tv_theme_list(ranked, _pick_numbers(ranked))}
 </div>
-<div class="hero-side">
-{_sector_picks(ranked)}
-{_top_picks(ranked)}
+<h2 class="tv-h">추천 종목</h2>
+{_tv_pick_cards(ranked)}
+<div class="tv-g2">
+<div class="tv-card tv-flow">{_changes_html(load_history())}</div>
+<div class="tv-card tv-flow">{_priority_list(ranked)}</div>
 </div>
-</div>
-{_changes_html(load_history())}
-{_priority_list(ranked)}
 </section>
 
 <section id="pane-cards" hidden>
