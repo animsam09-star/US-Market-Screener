@@ -1472,6 +1472,52 @@ def f30_penetration_units():
     check("F30 100% 아님", pen[-1][1] < 95, f"{pen[-1][1]:.1f}")
 
 
+# ---------------------------------------------------------------- F50
+def f50_flow_analysis():
+    """테마 카드 '흐름 분석' — 꼭지·판매가격 시점·과거 대승 근거·다시 오를 신호.
+
+    요구(2026-10-16): 비료 '왜 올랐다 빠졌나, 다시 오를 수 있나' 분석을 카드에.
+    실측 사고 2: ①월말 값으로 꼭지를 잡아 월중 꼭지를 놓침(−12%인데 '꼭지
+    근처') → 일별 값 ②주장하지 않은 축(공급 축소)·0점 축을 대승 원인으로 지목
+    → 주장한 근거 중 40점 이상만.
+    """
+    from datetime import date, timedelta
+    import screener.dashboard as db
+    from screener.axes import Signal, resolve_catalysts
+    from screener.signals import ThemeResult
+
+    r = ThemeResult(name="비료류", thesis="", tickers=["A"])
+    r.claimed, _ = resolve_catalysts(["스프레드", "공급"])
+    r.catalyst = [Signal("A7", "⑦ 스프레드", 89, "ok", "d"),
+                  Signal("A2", "② 공급", 1, "ok", "가동률 72% (10년 1분위), 기타")]
+    d0 = date(2025, 4, 1)
+    # 일별: 100 → 월중 꼭지 200(마지막 날만) → 지금 176(꼭지 대비 −12%)
+    px = [(d0 + timedelta(days=i), 100 + i * 0.4) for i in range(250)]
+    px.append((d0 + timedelta(days=250), 200.0))
+    px += [(d0 + timedelta(days=251 + i), 176.0) for i in range(100)]
+    r.series = {"price_index": px,
+                "ppi_out": [(f"2025-{m:02d}-01", 100 + m * 5) for m in range(1, 13)]
+                + [("2026-01-01", 170), ("2026-02-01", 160), ("2026-03-01", 140)],
+                "ppi_in": [(f"2025-{m:02d}-01", 50) for m in range(1, 13)]}
+    old = db.BT_RECORDS
+    try:
+        db.BT_RECORDS = [
+            {"theme": "비료류", "date": "2020-12-31", "verdict": "볼 만함",
+             "fwd12": 121.0, "axes": {"A2": 97, "A6": 99}},
+            {"theme": "비료류", "date": "2020-06-30", "verdict": "판정 불가",
+             "fwd12": 198.0, "axes": {"A6": 90}},
+        ]
+        h = db._flow_analysis(r, "이유 약함")
+    finally:
+        db.BT_RECORDS = old
+    check("F50 일별 꼭지(월중 꼭지 반영)", "꼭지보다 12% 아래" in h, h[:300])
+    check("F50 판매가격 꼭지·주가 선행", "판매가격" in h and "먼저 꺾였습니다" in h, "")
+    check("F50 대승 원인은 주장한 근거만",
+          "공급 부족&#x27; 근거가 강할 때" in h and "공급 축소" not in h, "")
+    check("F50 지금 그 점수", "지금 그 점수는 1점" in h, "")
+    check("F50 다시 오를 신호", "다시 오를 신호" in h and "가동률 72%" in h, "")
+
+
 # ---------------------------------------------------------------- F49
 def f49_backtest_easy_page():
     """백테스트 페이지는 쉬운 말 판 — 결론·성적 막대·근거·틀린 때, 원문은 접기.
@@ -1595,7 +1641,7 @@ def main() -> int:
                f38_why_flat_diagnosis, f39_week_changes, f40_earnings_link,
                f41_pead_point_in_time, f42_price_snapshot_fallback,
                f43_sample_window, f44_stable_axis_gate, f45_stable_axes_self_update, f46_theme_schema, f47_dashboard_tabs_and_honesty,
-               f48_stock_detail_window, f49_backtest_easy_page]:
+               f48_stock_detail_window, f49_backtest_easy_page, f50_flow_analysis]:
         try:
             fn()
         except Exception as e:

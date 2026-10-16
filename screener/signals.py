@@ -548,7 +548,16 @@ def evaluate_theme(theme: dict, tmap: dict, bench: list, series_cache: dict) -> 
     res.unpriced = [u1_fundamental_inflection(group), u2_valuation_gap(group),
                     u3_price_unreacted(px), u4_long_term(px), u5_basing(px)]
     res.rebound = bool(px.get("rebound"))
+    # 흐름 분석(카드)용 — 판매가격·원가 지수 최근 4년. 실패해도 카드만 생략.
+    _ppi = {}
+    for _k, _key in (("ppi_out", "ppi_output"), ("ppi_in", "ppi_input")):
+        if fc.get(_key):
+            try:
+                _ppi[_k] = list(fred(fc[_key]))[-60:]
+            except Exception:
+                pass
     res.series = {
+        **_ppi,
         "price_index": px.get("index", [])[-500:],
         "rev_yoy": group.get("rev_yoy_series", []),
         "capex_dep": group.get("capex_dep_series", []),

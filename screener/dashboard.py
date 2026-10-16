@@ -326,6 +326,7 @@ def _card(r: ThemeResult, rank: int) -> str:
      · 기각 {r.n_rejected}개</em></p>
   <p class="verdict-line"><span class="vd {vcls}">{_e(vtag)}</span>{_e(vtext)}</p>
   {_theme_answer(r, vtag)}
+  {_flow_analysis(r, vtag)}
   {inc_line}
   <details class="detail">
     <summary>근거 자세히 — 축별 판정과 원본 링크</summary>
@@ -644,6 +645,173 @@ def _sector_picks(ranked: list[ThemeResult]) -> str:
                 '이 신호는 연평균 2번꼴로만 뜹니다. 억지로 고르면 승률 50% 그룹입니다.</p></div>')
     return ('<div class="secpicks"><h2>추천 섹터 <em>번호는 사분면 배지</em></h2>'
             '<ol class="sp-list">' + "".join(rows) + "</ol></div>")
+
+
+def _monthly(points: list) -> list[tuple[str, float]]:
+    """(날짜, 값) → 월말 값 [(YYYY-MM, v)]."""
+    m: dict[str, float] = {}
+    for d, v in points or []:
+        if v is None:
+            continue
+        m[str(d)[:7]] = float(v)
+    return sorted(m.items())
+
+
+def _ym(k: str) -> str:
+    return f"{k[2:4]}년 {int(k[5:7])}월"
+
+
+def _mdiff(a: str, b: str) -> int:
+    return (int(b[:4]) - int(a[:4])) * 12 + int(b[5:7]) - int(a[5:7])
+
+
+def _flow_analysis(r: ThemeResult, tag: str) -> str:
+    """'왜 오르고 빠졌나 · 다시 오르려면' — 카드마다 데이터에서 다시 만든다.
+
+    비료 사례(판매가격 5월 꼭지, 주가는 2개월 앞선 3월 꼭지, 과거 대승은 공급
+    부족 주도, 지금 그 점수 1)를 일반화했다. 문장은 숫자에서만 만든다 —
+    데이터가 없는 줄은 통째로 뺀다(빈 말 금지).
+    """
+    lines: list[str] = []
+    # 꼭지·바닥은 일별 값으로 — 월말 값만 보면 월중 꼭지를 놓친다(비료 실측:
+    # 월말 기준 '꼭지 근처'였지만 일별 꼭지 대비 −12%).
+    px = [(str(d)[:7], float(v)) for d, v in (r.series.get("price_index") or [])[-390:]
+          if v is not None]
+    shape = None
+    pk = None
+    if len(px) >= 120:
+        vals = [v for _, v in px]
+        i_pk = max(range(len(vals)), key=lambda i: vals[i])
+        pk = px[i_pk][0]
+        lo_i = min(range(i_pk + 1), key=lambda i: vals[i])
+        rise = vals[i_pk] / vals[lo_i] - 1 if vals[lo_i] else 0
+        dd = vals[-1] / vals[i_pk] - 1
+        ago = _mdiff(pk, px[-1][0])
+        if rise >= 0.2 and dd <= -0.08:
+            shape = "up_down"
+            lines.append(f"주가: {_ym(px[lo_i][0])}부터 {rise * 100:.0f}% 올라 "
+                         f"{_ym(pk)}에 꼭지, 지금은 꼭지보다 {abs(dd) * 100:.0f}% 아래"
+                         f"({ago}개월 전 꼭지)입니다.")
+        elif rise >= 0.15 and dd > -0.05:
+            shape = "rising"
+            lines.append(f"주가: {_ym(px[lo_i][0])}부터 {rise * 100:.0f}% 올라 "
+                         f"지금 꼭지 근처입니다.")
+        elif dd <= -0.15:
+            shape = "falling"
+            lines.append(f"주가: {_ym(pk)} 꼭지 이후 {abs(dd) * 100:.0f}% 빠지는 중입니다.")
+        else:
+            shape = "flat"
+            lines.append(f"주가: 최근 1년 반 동안 뚜렷한 추세 없이 오르내렸습니다"
+                         f"(꼭지 {_ym(pk)}, 지금은 꼭지 대비 {dd * 100:+.0f}%).")
+
+    po = _monthly(r.series.get("ppi_out") or [])[-19:]
+    pi = _monthly(r.series.get("ppi_in") or [])[-19:]
+    price_falling = False
+    if len(po) >= 8:
+        ov = [v for _, v in po]
+        j = max(range(len(ov)), key=lambda i: ov[i])
+        lo = min(range(j + 1), key=lambda i: ov[i])
+        since = ov[-1] / ov[j] - 1
+        up = ov[j] / ov[lo] - 1 if ov[lo] else 0
+        txt = (f"판매가격: {_ym(po[lo][0])} 대비 {up * 100:.0f}% 올라 {_ym(po[j][0])}에 꼭지"
+               + (f", 이후 {abs(since) * 100:.0f}% 내려왔습니다" if since <= -0.03
+                  else ", 아직 그 근처입니다") + f"(최근 {_ym(po[-1][0])} 발표).")
+        price_falling = since <= -0.05
+        if pk and shape in ("up_down", "falling") and since <= -0.03:
+            lead = _mdiff(pk, po[j][0])
+            if lead > 0:
+                txt += f" 주가는 판매가격 꼭지보다 {lead}개월 먼저 꺾였습니다 — 시장이 앞서 읽었습니다."
+            elif lead == 0:
+                txt += " 주가와 판매가격이 같은 달에 꺾였습니다."
+        lines.append(txt)
+        if len(pi) >= 4:
+            iv = [v for _, v in pi]
+            c3 = iv[-1] / iv[-4] - 1 if iv[-4] else 0
+            word = "내려" if c3 < -0.05 else ("올라" if c3 > 0.05 else "비슷")
+            lines.append(f"원가: 최근 3개월 {c3 * 100:+.0f}% "
+                         + ("— 비슷한 수준입니다." if word == "비슷"
+                            else f"— {word} 마진에 {'유리' if c3 < 0 else '불리'}합니다."))
+    else:
+        rv = r.series.get("rev_yoy") or []
+        if len(rv) >= 5:
+            now, prev = rv[-1][1], rv[-5][1]
+            lines.append(f"실적: 매출 증가율 {prev:+.0f}% → {now:+.0f}%"
+                         f"({'가속' if now > prev + 2 else '둔화' if now < prev - 2 else '비슷'}).")
+
+    # 과거 이 테마가 시장을 크게 이긴 때 무엇이 끌었나
+    recs = [x for x in BT_RECORDS if x.get("theme") == r.name and x.get("fwd12") is not None]
+    big = [x for x in recs if x["fwd12"] >= 30]
+    cur = {s_.key: s_ for s_ in r.catalyst}
+    claimed = set(r.claimed) if r.claimed else set(cur)
+    lead_ax = None
+
+    def _drv(x):
+        # 그 테마가 주장한 근거 중 40점 이상인 것만 원인으로 지목한다 —
+        # 주장하지 않은 축(비료의 '공급 축소')이나 0점 축을 끌어오지 않게.
+        ax = {k: v for k, v in (x.get("axes") or {}).items() if k in claimed and v >= 40}
+        return max(ax, key=ax.get) if ax else None
+
+    if big:
+        cnt: dict[str, int] = {}
+        for x in big:
+            k = _drv(x)
+            if k:
+                cnt[k] = cnt.get(k, 0) + 1
+        if cnt:
+            lead_ax = max(cnt, key=cnt.get)
+            ex = sorted((x for x in big if _drv(x) == lead_ax),
+                        key=lambda x: -x["fwd12"])[:2]
+            nm = AXIS_NOUN.get(lead_ax, lead_ax)
+            sc = ", ".join(f"{x['date'][:7]} {_pct_short(x['fwd12'])}" for x in ex)
+            now_s = cur.get(lead_ax)
+            now_v = (f"지금 그 점수는 {now_s.effective:.0f}점입니다"
+                     if now_s and now_s.effective is not None else "지금은 측정되지 않습니다")
+            rest = len(big) - cnt[lead_ax]
+            lines.append(f"과거 크게 이긴 때: 이 테마가 1년 뒤 시장을 30%p 이상 이긴 "
+                         f"{len(big)}번 중 {cnt[lead_ax]}번은 '{nm}' 근거가 강할 때였습니다"
+                         f"({sc})" + (f", 나머지 {rest}번은 주장한 근거가 약한 채 오른 때"
+                                     if rest else "") + f". {now_v}.")
+        else:
+            lines.append(f"과거 크게 이긴 때: 시장을 30%p 이상 이긴 {len(big)}번"
+                         + (" 모두" if len(big) > 1 else "은")
+                         + " 이 테마가 주장한 근거가 약할 때였습니다 — 근거와 상관없는 상승이었습니다.")
+    elif len(recs) >= 8:
+        lines.append(f"과거 크게 이긴 때: 백테스트 기간({recs[0]['date'][:4]}~) 동안 "
+                     "이 테마가 1년 뒤 시장을 30%p 이상 이긴 적이 없습니다.")
+
+    same = [x for x in recs if x.get("verdict") == tag][-3:]
+    if same:
+        lines.append(f"같은 판정('{tag}')이었던 때: "
+                     + ", ".join(f"{x['date'][:7]} {_pct_short(x['fwd12'])}" for x in same)
+                     + " (1년 뒤 시장 대비).")
+
+    # 다시 오를 신호
+    sig: list[str] = []
+    if price_falling:
+        sig.append("판매가격 하락이 멈추고 다시 오르는지(월별 발표)")
+    if lead_ax:
+        s_ = cur.get(lead_ax)
+        if not s_ or (s_.effective or 0) < 40:
+            det = (s_.detail.split(",")[0].strip() if s_ and s_.detail else "")
+            sig.append(f"'{AXIS_NOUN.get(lead_ax, lead_ax)}' 근거가 살아나는지"
+                       + (f" — 지금 {det}" if det else ""))
+    if len(po) >= 8 and len(pi) >= 4:
+        sig.append("원가는 낮게 유지되는데 판매가격이 버티는지(마진 유지)")
+    if r.rebound:
+        sig.append("주가가 200일 평균선 위로 회복하는지")
+    if tag == "이미 반영":
+        sig.append("주가가 쉬는 사이 실적이 따라잡는지")
+    if not lines:
+        return ""
+    body = "".join(f"<li>{_e(x)}</li>" for x in lines)
+    sg = ("<div class='flow-sig'><b>다시 오를 신호로 볼 것</b><ul>"
+          + "".join(f"<li>{_e(x)}</li>" for x in sig) + "</ul></div>") if sig else ""
+    return ("<div class='flow'><div class='flow-h'>흐름 분석 — 왜 오르고 빠졌나</div>"
+            f"<ul>{body}</ul>{sg}</div>")
+
+
+def _pct_short(v: float) -> str:
+    return f"{v:+.0f}%p"
 
 
 def _theme_answer(r: ThemeResult, tag: str) -> str:
@@ -1242,6 +1410,12 @@ CSS = """
 .chip.v-good{border-color:var(--good)}.chip.v-bad{border-color:var(--critical)}
 .card.flash{outline:3px solid var(--seq-450);transition:outline .2s}
 .pt.pick{stroke:#c9a227;stroke-width:3}
+.flow{margin:8px 0 10px;padding:12px 16px;border:1px solid var(--border);
+ border-radius:10px;background:var(--plane);font-size:13.5px;line-height:1.6}
+.flow-h{font-weight:800;margin-bottom:4px;color:var(--text-primary)}
+.flow ul{margin:4px 0;padding-left:18px}.flow li{margin:3px 0;color:var(--text-secondary)}
+.flow-sig{margin-top:8px;padding-top:8px;border-top:1px dashed var(--border)}
+.flow-sig b{color:var(--text-primary)}
 /* ---- TradingView 톤: 검은 바탕·얇은 테두리·초록/빨강 등락 ---- */
 .viz-root{--tv-up:#089981;--tv-dn:#f23645;--tv-link:#2962ff;--tv-card:#ffffff;
  --tv-line:#e0e3eb;--tv-hover:#f0f3fa;--tv-chip:#f0f3fa}
