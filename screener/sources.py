@@ -497,6 +497,102 @@ def finnhub_insider(ticker: str, since: str) -> list[dict]:
         return []
 
 
+# ---------------------------------------------------------------- Yahoo 추정치 추이
+# quoteSummary 는 쿠키+crumb 이 있어야 열린다(사이트 상세 창 detail_api.js 와 같은 방식).
+# 공식 API 가 아니라 언제든 막힐 수 있다 — 실패는 조용히 [] 이고 진단 표식에 남긴다.
+YH_STAT = {"ok": 0, "empty": 0, "err": 0, "why": "", "auth": None}
+_YH = {"s": None, "crumb": None}
+_YUA = ("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
+        "(KHTML, like Gecko) Chrome/124.0 Safari/537.36")
+
+
+def _yh_session():
+    if _YH["s"] is None:
+        import requests
+        s = requests.Session()
+        s.headers["User-Agent"] = _YUA
+        try:
+            s.get("https://fc.yahoo.com", timeout=15)
+            c = s.get("https://query1.finance.yahoo.com/v1/test/getcrumb", timeout=15).text.strip()
+            _YH["crumb"] = c if c and len(c) <= 40 and "<" not in c else ""
+        except Exception as e:
+            _YH["crumb"] = ""
+            YH_STAT["why"] = f"auth {type(e).__name__}"
+        YH_STAT["auth"] = bool(_YH["crumb"])
+        _YH["s"] = s
+    return _YH["s"], _YH["crumb"]
+
+
+def _raw(d) -> float | None:
+    v = (d or {}).get("raw") if isinstance(d, dict) else None
+    try:
+        return float(v) if v is not None else None
+    except (TypeError, ValueError):
+        return None
+
+
+def parse_eps_trend(payload) -> dict | None:
+    """earningsTrend → 다음 회계연도(+1y, 없으면 올해 0y) EPS 추정치 추이."""
+    try:
+        tr = payload["quoteSummary"]["result"][0]["earningsTrend"]["trend"]
+    except (KeyError, IndexError, TypeError):
+        return None
+    by = {x.get("period"): x for x in tr if isinstance(x, dict)}
+    for per in ("+1y", "0y"):
+        x = by.get(per)
+        if not x:
+            continue
+        et = x.get("epsTrend") or {}
+        rv = x.get("epsRevisions") or {}
+        d = {"period": per, "fy": x.get("endDate") or "",
+             "cur": _raw(et.get("current")), "d7": _raw(et.get("7daysAgo")),
+             "d30": _raw(et.get("30daysAgo")), "d60": _raw(et.get("60daysAgo")),
+             "d90": _raw(et.get("90daysAgo")),
+             "up30": _raw(rv.get("upLast30days")), "down30": _raw(rv.get("downLast30days")),
+             "n": _raw((x.get("earningsEstimate") or {}).get("numberOfAnalysts"))}
+        if d["cur"] is not None and d["d30"] is not None:
+            return d
+    return None
+
+
+def yahoo_eps_trend(ticker: str) -> dict | None:
+    """하루 캐시. 키 불필요."""
+    import json as _json
+    import time as _t
+
+    from .net import CACHE_DIR, cache_path
+    url = f"yahoo-earnings-trend://{ticker.upper()}"
+    cp = cache_path(url)
+    if cp.exists() and (_t.time() - cp.stat().st_mtime) < 24 * 3600:
+        try:
+            out = parse_eps_trend(_json.loads(cp.read_bytes()))
+            YH_STAT["ok" if out else "empty"] += 1
+            return out
+        except Exception:
+            pass
+    if YH_STAT["err"] >= 5 and not YH_STAT["ok"]:
+        return None                   # 이번 실행에선 막힌 것으로 판정
+    s, crumb = _yh_session()
+    if not crumb:
+        YH_STAT["err"] += 1
+        return None
+    try:
+        _t.sleep(0.3)
+        r = s.get(f"https://query2.finance.yahoo.com/v10/finance/quoteSummary/{ticker}",
+                  params={"modules": "earningsTrend", "crumb": crumb}, timeout=15)
+        if r.status_code != 200:
+            raise FetchError(f"HTTP {r.status_code}")
+        CACHE_DIR.mkdir(exist_ok=True)
+        cp.write_bytes(r.content)
+        out = parse_eps_trend(r.json())
+        YH_STAT["ok" if out else "empty"] += 1
+        return out
+    except Exception as e:
+        YH_STAT["err"] += 1
+        YH_STAT["why"] = YH_STAT["why"] or f"{type(e).__name__}: {str(e)[:60]}"
+        return None
+
+
 def finnhub_surprise(ticker: str) -> dict | None:
     """EPS 서프라이즈 (Finnhub 무료 티어). 키 없으면 조용히 None —
     이 지표는 표시·진단용이지 점수 재료가 아니므로 결측이 판정을 바꾸지 않는다."""

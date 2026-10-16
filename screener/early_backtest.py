@@ -119,6 +119,8 @@ def theme_asof(theme: dict, when: date, ctx: Ctx) -> ThemeResult:
     ser["price_index"] = (px.get("index") or [])[-500:]
     ser["rev_yoy"] = group.get("rev_yoy_series", [])
     r.series = ser
+    # 예측력 개선 분석용 — 그때의 주가 위치(이미 올랐나·꺾였나)
+    r.px_state = {k: px.get(k) for k in ("abs_12m", "rel_12m", "rel_3y", "vs_ma200", "drawdown")}
     return r
 
 
@@ -149,9 +151,14 @@ def run(start: date, end: date | None = None) -> dict:
                 print(f"    {th['name']} {d} 실패: {type(e).__name__}: {e}")
                 continue
             tickers = [t.upper() for t in th["tickers"]]
+            bcut = [v for dd, v in ctx.bench if dd <= d]
+            mkt = (bcut[-1] / (sum(bcut[-200:]) / 200) - 1) * 100 if len(bcut) >= 200 else None
             recs.append({
                 "date": d.isoformat(), "theme": th["name"],
                 "on": [n for n, _ in _early_signals(r)],
+                "px": {k: (round(v, 2) if isinstance(v, (int, float)) else v)
+                       for k, v in (getattr(r, "px_state", None) or {}).items()},
+                "mkt_ma200": round(mkt, 2) if mkt is not None else None,
                 "fwd6": theme_forward(ctx, tickers, d, 182),
                 "fwd12": theme_forward(ctx, tickers, d, 365) if d <= last else None,
             })
@@ -262,6 +269,10 @@ def main() -> int:
     rep.mkdir(exist_ok=True)
     (rep / "early_signal_stats.json").write_text(
         json.dumps(ana, ensure_ascii=False, indent=1), encoding="utf-8")
+    # 분석용 전체 관측(테마×달, 켜진 신호·주가 위치·결과) — 저장소 밖(cache)
+    from .net import CACHE_DIR
+    (CACHE_DIR / "early_records.json").write_text(
+        json.dumps(res["records"], ensure_ascii=False), encoding="utf-8")
     (rep / "early_signal_events.json").write_text(
         json.dumps(events(res["records"]), ensure_ascii=False, indent=0), encoding="utf-8")
     b = ana["base"]["fwd12"]

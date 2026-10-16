@@ -784,6 +784,24 @@ def _early_signals(r: ThemeResult) -> list[tuple[str, str]]:
             out.append(("EPS 추정치 상향",
                         f"다음 회계연도 이익 추정치가 {_ym(base_d[:7]) if base_d else '한 달 전'}보다 "
                         f"{up}/{len(ch)}개 종목에서 올랐습니다(가운데값 {med * 100:+.0f}%)"))
+    # EPS 추정치 상향(Yahoo 추정치 추이) — 다음 회계연도 EPS 를 30일 전과 비교.
+    # FMP 비교가 이미 켰으면 중복하지 않는다.
+    if not any(n == "EPS 추정치 상향" for n, _ in out):
+        rows = [(t, d["cur"] / d["d30"] - 1,
+                 (d["d30"] / d["d90"] - 1) if d.get("d90") else None)
+                for t, d in S_.get("eps_trend") or []
+                if d.get("cur") and d.get("d30") and d["d30"] > 0]
+        if len(rows) >= 2:
+            ch = sorted(c for _, c, _p in rows)
+            med = ch[len(ch) // 2]
+            up = sum(1 for c in ch if c > 0.005)
+            if med >= 0.02 and up >= 0.6 * len(ch):
+                prev = sorted(p for _, _c, p in rows if p is not None)
+                turn = bool(prev) and prev[len(prev) // 2] <= 0.005
+                out.append(("EPS 추정치 상향",
+                            f"다음 회계연도 이익 추정치가 30일 전보다 {up}/{len(ch)}개 종목에서 "
+                            f"올랐습니다(가운데값 {med * 100:+.0f}%)"
+                            + (" — 그 전 두 달은 제자리·하향이었다가 돌아섬" if turn else "")))
     px = [v for _, v in (S_.get("price_index") or []) if v is not None]
     if len(px) >= 230:
         ma = [sum(px[i - 199:i + 1]) / 200 for i in range(len(px) - 30, len(px))]
@@ -2238,7 +2256,7 @@ def _diag_line() -> str:
     try:
         from .insider import RUN_BUDGET, STAT
         from .fmp import STAT as FS
-        from .sources import FH_INS_STAT, RECO_STAT
+        from .sources import FH_INS_STAT, RECO_STAT, YH_STAT
         t = (f"form4 docs={STAT['docs']} doc_err={STAT['doc_err']} subs_err={STAT['subs_err']} "
              f"sec_blocked={STAT['sec_blocked']} fh_ins ok={FH_INS_STAT['ok']} "
              f"empty={FH_INS_STAT['empty']} err={FH_INS_STAT['err']} {FH_INS_STAT['why']} | "
@@ -2246,7 +2264,9 @@ def _diag_line() -> str:
              f"ok={RECO_STAT['ok']} empty={RECO_STAT['empty']} err={RECO_STAT['err']} "
              f"{RECO_STAT['why']} | fmp key={FS['key']} est ok={FS['est_ok']} "
              f"empty={FS['est_empty']} err={FS['est_err']} pt ok={FS['pt_ok']} "
-             f"empty={FS['pt_empty']} err={FS['pt_err']} skip={FS['skipped']} {FS['why']}")
+             f"empty={FS['pt_empty']} err={FS['pt_err']} skip={FS['skipped']} {FS['why']} | "
+             f"yahoo auth={YH_STAT['auth']} ok={YH_STAT['ok']} empty={YH_STAT['empty']} "
+             f"err={YH_STAT['err']} {YH_STAT['why']}")
     except Exception as e:
         t = f"diag {type(e).__name__}"
     return t.replace("--", "-").replace(">", " ").replace("<", " ")

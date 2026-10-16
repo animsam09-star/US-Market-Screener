@@ -1526,6 +1526,27 @@ def f53_fmp_estimates():
                 "est_rev": [("AA", 2.0, 2.0, "2026-09-14"), ("BB", 4.0, 3.9, "2026-09-14")]}
     check("F53 한 종목뿐·추정치 정체는 침묵", db._early_signals(q) == [], str(db._early_signals(q)))
 
+    # Yahoo 추정치 추이 — 다음 회계연도(+1y) 우선, 30일 전과 비교
+    from screener.sources import parse_eps_trend
+
+    def tr(per, cur, d30, d90):
+        return {"period": per, "endDate": "2027-12-31",
+                "epsTrend": {"current": {"raw": cur}, "30daysAgo": {"raw": d30},
+                             "90daysAgo": {"raw": d90}},
+                "epsRevisions": {"upLast30days": {"raw": 3}, "downLast30days": {"raw": 0}},
+                "earningsEstimate": {"numberOfAnalysts": {"raw": 12}}}
+    pay = {"quoteSummary": {"result": [{"earningsTrend": {"trend": [
+        tr("0y", 5, 5, 5), tr("+1y", 6.6, 6.0, 6.1)]}}]}}
+    d = parse_eps_trend(pay)
+    check("F53 Yahoo: 다음 회계연도 우선", d and d["period"] == "+1y" and d["cur"] == 6.6, str(d))
+    check("F53 Yahoo: 깨진 응답은 None", parse_eps_trend({"quoteSummary": {}}) is None, "")
+    y = ThemeResult(name="Y", thesis="", tickers=["AA", "BB"])
+    y.series = {"eps_trend": [("AA", {"cur": 6.6, "d30": 6.0, "d90": 6.1}),
+                              ("BB", {"cur": 3.2, "d30": 3.0, "d90": 3.05})]}
+    sg = dict(db._early_signals(y))
+    check("F53 Yahoo: EPS 추정치 상향 + 꺾임 문구", "EPS 추정치 상향" in sg and "돌아섬" in sg["EPS 추정치 상향"],
+          str(sg))
+
 
 # ---------------------------------------------------------------- F52
 def f52_early_record_and_new_data():

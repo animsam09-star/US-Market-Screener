@@ -19,6 +19,7 @@ from .sources import (
     fedreg_signal,
     financials_snapshot,
     finnhub_reco,
+    yahoo_eps_trend,
     finnhub_surprise,
     fred_series,
     quarterly_from_periods,
@@ -588,7 +589,7 @@ def evaluate_theme(theme: dict, tmap: dict, bench: list, series_cache: dict) -> 
             p[0] += _row["buy"]
             p[1] += _row["total"]
     # FMP — 목표주가 요약·다음 회계연도 EPS 추정치(한 달 전 기록과 비교)
-    _pt, _est = [], {}
+    _pt, _est, _ytr = [], {}, []
     try:
         from datetime import date as _date2
 
@@ -600,6 +601,12 @@ def evaluate_theme(theme: dict, tmap: dict, bench: list, series_cache: dict) -> 
             _e = _fmp.next_fy_eps(_t)
             if _e:
                 _est[_t] = [_e[0], _e[1]]
+        # Yahoo 추정치 추이(무료) — 30·60·90일 전 추정치를 함께 줘서 첫날부터 비교 가능
+        for _t in tickers:
+            _y = yahoo_eps_trend(_t)
+            if _y:
+                _ytr.append((_t, _y))
+                _est.setdefault(_t, [_y["fy"], _y["cur"]])
         _rev = _fmp.revisions(_est, _fmp.est_baseline(_date2.today()))
     except Exception as _e2:
         res.notes.append(f"추정치 미확보: {type(_e2).__name__}")
@@ -609,6 +616,7 @@ def evaluate_theme(theme: dict, tmap: dict, bench: list, series_cache: dict) -> 
         "pt": _pt,
         "est": _est,
         "est_rev": _rev,
+        "eps_trend": _ytr,
         "lead": _lead,
         "insider": _ins,
         "reco": [(k, v[0], v[1]) for k, v in sorted(_reco.items())],
