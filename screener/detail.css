@@ -1,0 +1,152 @@
+/* ---- 종목 상세 창 ----
+   미국 실적발표 정리(us-earnings-screening/template.py)의 상세 창 CSS 를 옮겨 왔다.
+   바뀐 것은 두 가지뿐이다.
+   1) 모든 규칙 앞에 #ov 를 붙였다 — 대시보드의 h2·h3·.sub·.chip·table 규칙과
+      섞이지 않게(대시보드 쪽 규칙이 창 안으로 새어 들거나 그 반대가 없게).
+   2) 색은 원본의 --card·--line 같은 이름을 그대로 쓰되, 그 값을 대시보드의
+      TradingView 색(--tv-card·--tv-line·--text-primary …)에 묶었다. 그래서
+      라이트/다크 단추를 누르면 창도 같이 바뀐다. 상승 초록·하락 빨강. */
+#ov{--card:var(--tv-card);--line:var(--tv-line);--ink:var(--text-primary);
+ --sub:var(--text-secondary);--accent:var(--tv-link);--bg:var(--tv-hover);
+ --hover:var(--tv-hover);--tint:var(--tv-hover);--up:var(--tv-up);--down:var(--tv-dn);
+ --chip:var(--tv-chip);--memo:var(--tv-hover);--err:var(--tv-dn)}
+/* 클릭할 수 있는 종목 표시 — 카드 머리·종목표의 티커·회사명 */
+.viz-root [data-tk]{cursor:pointer}
+.viz-root [data-tk]:hover{text-decoration:underline var(--tv-link);text-underline-offset:3px}
+#ov{position:fixed;inset:0;background:rgba(0,0,0,.42);z-index:50;
+ display:flex;align-items:center;justify-content:center;padding:18px;
+ font-size:13.5px;line-height:1.5;color:var(--ink)}
+#ov[hidden]{display:none}
+#dlg{background:var(--card);border:1px solid var(--line);border-radius:12px;
+ width:min(1460px,96vw);max-height:calc(100vh - 36px);overflow:auto;
+ box-shadow:0 18px 50px rgba(0,0,0,.28);text-align:left}
+#ov .dhead{display:flex;gap:12px;align-items:flex-start;padding:16px 18px 10px;
+ position:sticky;top:0;background:var(--card);border-bottom:1px solid var(--line);z-index:2}
+#ov .dhead h2{margin:0;font-size:17px;letter-spacing:-.01em;color:var(--ink)}
+#ov .dhead h2 span{color:var(--sub);font-weight:500;font-size:13px;margin-left:6px}
+#ov .dsub{color:var(--sub);font-size:12px;margin-top:3px}
+#ov .dact{margin-left:auto;display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+/* 단추 — 원본의 .tab·.ghost·.seg 를 창 안에서만 쓴다 */
+#ov .tab,#ov button.ghost{padding:7px 13px;border:1px solid var(--line);
+ border-radius:8px;background:var(--card);cursor:pointer;font-size:13px;
+ white-space:nowrap;color:var(--ink);font-family:inherit}
+#ov .tab.on{background:var(--accent);color:#fff;border-color:var(--accent)}
+#ov .seg{display:inline-flex;border:1px solid var(--line);border-radius:8px;overflow:hidden}
+#ov .seg button{border:none;background:var(--card);color:var(--ink);font-size:12px;
+ padding:6px 11px;cursor:pointer;font-family:inherit}
+#ov .seg button.on{background:var(--accent);color:#fff}
+#ov button:focus-visible,#ov input:focus-visible{outline:2px solid var(--accent);outline-offset:1px}
+#ov .pos{color:var(--up)}#ov .neg{color:var(--down)}
+#dclose{font-size:15px;line-height:1;padding:6px 10px}
+/* 모달 안 탭 */
+#ov .dtabs{display:flex;gap:4px;padding:0 18px;border-bottom:1px solid var(--line);
+ position:sticky;top:0;background:var(--card);z-index:1;flex-wrap:wrap}
+#ov .dtabs button{border:none;background:none;color:var(--sub);font-family:inherit;
+ font-size:13px;padding:9px 12px;cursor:pointer;border-bottom:2px solid transparent;
+ margin-bottom:-1px}
+#ov .dtabs button.on{color:var(--accent);border-bottom-color:var(--accent);font-weight:600}
+#ov .pane{display:none}#ov .pane.on{display:block}
+/* 스크리너 진단 — 이 도구가 그 종목을 어떻게 봤나 */
+#p-diag{padding:14px 18px 18px}
+#ov .dgtop{display:flex;flex-wrap:wrap;gap:10px;margin-bottom:14px}
+#ov .dgbox{border:1px solid var(--line);border-radius:10px;padding:10px 14px;min-width:112px;
+ background:var(--bg)}
+#ov .dgbox span{display:block;font-size:11.5px;color:var(--sub)}
+#ov .dgbox strong{font-size:22px;font-weight:800;font-variant-numeric:tabular-nums}
+#ov .dgbox em{display:block;font-style:normal;font-size:11px;color:var(--sub)}
+#ov .dgchip{display:inline-block;font-size:12px;font-weight:700;padding:2px 9px;
+ border-radius:999px;background:var(--chip);color:var(--ink);margin-right:6px}
+#ov .dgsec{margin:16px 0 0}
+#ov .dgsec h3{display:block;font-size:13px;color:var(--sub);margin:0 0 7px;font-weight:600}
+#ov .dgtbl{border-collapse:collapse;width:100%;max-width:760px;font-variant-numeric:tabular-nums}
+#ov .dgtbl th,#ov .dgtbl td{padding:7px 9px;border-bottom:1px solid var(--line);
+ text-align:left;font-size:13px;vertical-align:top}
+#ov .dgtbl th{color:var(--sub);font-weight:500;white-space:nowrap;width:150px}
+#ov .dgtbl td.v{font-weight:700;white-space:nowrap;width:110px;text-align:right}
+#ov .dgtbl td.n{color:var(--sub);font-size:12px}
+#ov .dgwhy{margin:0;padding-left:18px}
+#ov .dgwhy li{margin:3px 0;line-height:1.6}
+#ov .dgtheme{line-height:1.7;max-width:86ch}
+#ov .dgtheme a{color:var(--accent)}
+/* 기업 개요 */
+#p-about{padding:14px 18px 18px}
+#ov .abs{white-space:pre-wrap;line-height:1.72;font-size:13.5px;max-width:74ch}
+#ov .abmeta{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:12px}
+#ov .abmeta span{padding:5px 10px;border:1px solid var(--line);border-radius:999px;
+ font-size:12px;background:var(--bg)}
+#ov .abmeta span b{font-weight:600;color:var(--accent)}
+#ov .abmeta a{color:var(--accent)}
+#ov .abnote{margin-top:12px;color:var(--sub);font-size:11.5px;padding:0 18px}
+#p-about .abnote,#p-diag .abnote{padding:0}
+/* 보고서 — 한 곳에 모아 고르게 한다 */
+#ov .lgroup{padding:14px 18px 2px}
+#ov .lgroup h3{display:block;font-size:12px;color:var(--sub);margin:0 0 7px;font-weight:600;
+ letter-spacing:.02em}
+#ov .lgroup a{display:flex;align-items:center;gap:10px;padding:9px 12px;margin-bottom:6px;
+ border:1px solid var(--line);border-radius:9px;background:var(--bg);
+ color:var(--ink);text-decoration:none;font-size:13px}
+#ov .lgroup a:hover{border-color:var(--accent);background:var(--hover)}
+#ov .lgroup a .ic{font-size:15px;width:20px;text-align:center}
+#ov .lgroup a .sub2{color:var(--sub);font-size:11.5px;margin-left:auto;text-align:right}
+/* 지표 고르기 */
+#ov .dind{display:flex;flex-wrap:wrap;gap:6px;align-items:center;padding:10px 18px 2px}
+#ov .dind .sw2{display:inline-block;width:9px;height:9px;border-radius:2px;margin-right:5px}
+#ov .dind button{border:1px solid var(--line);border-radius:999px;background:var(--card);
+ color:var(--sub);font-family:inherit;font-size:11.5px;padding:4px 10px;cursor:pointer}
+#ov .dind button.on{color:var(--ink);border-color:var(--sub)}
+#ov .dind button.on .sw2{outline:1px solid rgba(0,0,0,.15)}
+#ov .dind .lbl2{font-size:11.5px;color:var(--sub);margin-left:4px}
+#ov .dind input.ma{width:104px;padding:4px 8px;font-size:11.5px;border:1px solid var(--line);
+ border-radius:8px;background:var(--card);color:var(--ink);font-family:inherit}
+/* 분기 실적표 */
+#ov .fin{padding:12px 18px 18px;overflow-x:auto}
+#ov .fin table{width:100%;min-width:640px;border-collapse:collapse;
+ font-variant-numeric:tabular-nums;font-size:12.5px;background:none}
+#ov .fin th,#ov .fin td{padding:7px 9px;text-align:right;border-bottom:1px solid var(--line);
+ white-space:nowrap}
+#ov .fin th{color:var(--sub);font-weight:600;font-size:11.5px;position:static;
+ background:none;box-shadow:none;cursor:default}
+#ov .fin th.q.est{color:var(--accent)}
+#ov .fin td.it,#ov .fin th.it{text-align:left;color:var(--ink);font-weight:600}
+#ov .fin tr.sub td,#ov .fin tr.sub td.it{color:var(--sub);font-weight:400}
+#ov .fin tr.gap td{border-top:2px solid var(--line)}
+#ov .fin .up{color:var(--up)}#ov .fin .dn2{color:var(--down)}
+#ov .fin .miss{color:var(--sub);opacity:.5}
+#ov .finnote{padding:0 18px 16px;color:var(--sub);font-size:11px;line-height:1.6}
+#ov .lgroup .finnote{padding:6px 0 0}
+#dmemo{width:100%;box-sizing:border-box;min-height:220px;resize:vertical;
+ padding:12px 14px;border:1px solid var(--line);border-radius:9px;
+ background:var(--memo);color:var(--ink);
+ font-family:inherit;font-size:13.5px;line-height:1.7}
+#dmemo:focus{outline:2px solid var(--accent);outline-offset:-2px}
+#ov .dleg{display:flex;flex-wrap:wrap;gap:4px 14px;padding:10px 18px 2px;font-size:11.5px}
+#ov .dleg i{font-style:normal;color:var(--sub)}
+#ov .dleg b{font-weight:600;font-variant-numeric:tabular-nums}
+#ov .dleg .sw{display:inline-block;width:10px;height:2.5px;vertical-align:middle;
+ margin-right:5px;border-radius:2px}
+#ov .dchart{position:relative;margin:6px 12px 4px}
+#cv{width:100%;display:block;touch-action:none}
+#ov .nlist{display:flex;flex-direction:column;padding:6px 18px 0}
+#ov .nlist a{display:grid;grid-template-columns:74px 1fr auto;gap:10px;align-items:baseline;
+ padding:9px 2px;border-bottom:1px solid var(--line);color:inherit;text-decoration:none}
+#ov .nlist a:hover{background:var(--tint)}
+#ov .nlist .nwhen{color:var(--sub);font-size:12px;font-variant-numeric:tabular-nums}
+#ov .nlist .ntitle{font-size:14px;line-height:1.45}
+#ov .nlist a:hover .ntitle{text-decoration:underline}
+#ov .nlist .nsrc{color:var(--sub);font-size:12px;white-space:nowrap}
+#p-news .abnote{padding:0 18px 16px}
+@media(max-width:640px){#ov .nlist a{grid-template-columns:1fr;gap:2px}
+ #ov .nlist .nsrc{white-space:normal}}
+#tip{position:absolute;pointer-events:none;background:var(--card);
+ border:1px solid var(--line);border-radius:8px;padding:8px 10px;font-size:11.5px;
+ line-height:1.55;box-shadow:0 6px 18px rgba(0,0,0,.16);display:none;
+ font-variant-numeric:tabular-nums;white-space:nowrap;z-index:3;color:var(--ink)}
+#tip b{font-weight:600}
+#tip i{font-style:normal;color:var(--sub)}
+#cmsg{padding:38px 18px;text-align:center;color:var(--sub);font-size:13px;display:none}
+#ov .dfoot{padding:4px 18px 16px;color:var(--sub);font-size:11px}
+@media (max-width:700px){#ov .dhead{flex-wrap:wrap}#ov .dact{margin-left:0}}
+#ov .miss{color:var(--sub);opacity:.5}
+/* 다크(검은 바탕)에서는 .42 로 덮어도 뒤 화면과 구별이 안 된다 — 더 어둡게 */
+:root[data-theme="dark"] #ov{background:rgba(0,0,0,.7)}
+:root[data-theme="dark"] #dlg{box-shadow:0 0 0 1px var(--line),0 18px 50px rgba(0,0,0,.6)}

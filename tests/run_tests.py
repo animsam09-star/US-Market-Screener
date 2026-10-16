@@ -1472,6 +1472,73 @@ def f30_penetration_units():
     check("F30 100% 아님", pen[-1][1] < 95, f"{pen[-1][1]:.1f}")
 
 
+# ---------------------------------------------------------------- F48
+def f48_stock_detail_window():
+    """종목(티커)을 누르면 상세 창이 떠야 한다.
+
+    요구(2026-10-16): "미국 실적발표 정리 참고하면 될 듯" — 테마·점수만 있고
+    종목 하나를 깊게 볼 길이 없었다. 실적발표 정리의 검증된 창(차트·분기/연간
+    실적·뉴스·개요·보고서)을 옮기고 맨 앞에 '스크리너 진단' 탭을 더했다.
+    깨지기 쉬운 곳: ①클릭 대상(data-tk)이 카드·종목표에서 빠지는 것 ②진단
+    탭 데이터(JSON)가 페이지에 안 심기는 것 ③_worker.js 가 /api/* 를 정적
+    파일로 넘겨 창이 '서버에 연결하지 못했습니다'만 띄우는 것.
+    """
+    import re as _re
+
+    import run as runmod
+    import screener.dashboard as db
+    from screener.axes import Signal
+    from screener.signals import ThemeResult
+
+    r = ThemeResult(name="방산류", thesis="t", tickers=["LHX", "GD"])
+    r.catalyst = [Signal("A5", "⑤ 정책", 70, "ok", "d")]
+    r.unpriced = [Signal("U3", "주가 미반응", 60, "ok", "d", raw=-12.0)]
+    r.stocks = [
+        {"ticker": "LHX", "total": 70.0, "benefit": 73.0, "upside": 67.0,
+         "rev_yoy": 7.3, "opm_delta": 0.9, "abs_12m": -15.6, "last": 240.5,
+         "derate": -29.0, "earn_date": "2026-07-29", "earn_react": -11.0,
+         "spark": [1.0, 2.0, 1.5]},
+        {"ticker": "GD", "total": 40.0, "benefit": 45.0, "upside": 35.0,
+         "abs_12m": 30.0},
+    ]
+    html = db.build_html([r])
+    for marker in ('id="ov"', 'id="dlg"', 'id="cv"', 'id="diagbox"',
+                   'data-p="diag" class="on"'):
+        check(f"F48 창 구조({marker})", marker in html, marker)
+    tabs = _re.findall(r'<button data-p="(\w+)"', html)
+    check("F48 탭 8개(진단 먼저)",
+          tabs == ["diag", "chart", "fin", "year", "news", "about", "doc", "memo"],
+          str(tabs))
+    check("F48 종목표 클릭 대상", 'th scope="row" data-tk="LHX"' in html)
+    check("F48 테마 카드 티커 클릭 대상", 'data-tk="GD"' in html)
+
+    m = _re.search(r"window\.SCR_DETAIL=(\{.*?\});</script>", html)
+    check("F48 진단 데이터 JSON 심김", m is not None)
+    if m:
+        d = json.loads(m.group(1))
+        lhx = d["stocks"].get("LHX", {})
+        check("F48 종목 행 숫자", lhx.get("benefit") == 73 and lhx.get("rank") == 1
+              and lhx.get("earn_date") == "2026-07-29", str(lhx)[:160])
+        check("F48 안 오른 종목은 why_flat 진단 동봉",
+              any("섹터" in x for x in lhx.get("why", [])), str(lhx.get("why")))
+        check("F48 이미 오른 종목(+30%)은 진단 생략", "why" not in d["stocks"]["GD"])
+        th = d["themes"].get("방산류", {})
+        check("F48 테마 판정·점수", th.get("i") == 1 and th.get("rel") == -12.0
+              and "v" in th, str(th))
+        check("F48 spark 같은 큰 배열은 안 심음", "spark" not in lhx)
+    check("F48 창 스크립트 포함", "window.openStockDetail" in html
+          and "function diagHtml" in html)
+
+    w = runmod.worker_js()
+    for route in ("/api/ohlcv", "/api/fin", "/api/news", "/api/profile"):
+        check(f"F48 _worker.js 라우트 {route}", f'"{route}"' in w, route)
+    check("F48 중계가 정적 파일보다 먼저",
+          0 < w.find("detailApi(new URL") < w.find("env.ASSETS.fetch(request)"))
+    check("F48 비밀번호 확인 유지", "SCREENER_PASSWORD" in w
+          and w.find("SCREENER_PASSWORD") < w.find("detailApi(new URL"))
+    check("F48 export default 는 하나", w.count("export default") == 1)
+
+
 def main() -> int:
     for fn in [f1_ytd_differencing, f2_no_economy_wide_fallback, f3_bea_result_shapes,
                f4_bea_final_demand_excluded, f5_naics_matching_direction,
@@ -1492,7 +1559,8 @@ def main() -> int:
                f36_xbrl_tag_and_fiscal_calendar, f37_annual_fallback,
                f38_why_flat_diagnosis, f39_week_changes, f40_earnings_link,
                f41_pead_point_in_time, f42_price_snapshot_fallback,
-               f43_sample_window, f44_stable_axis_gate, f45_stable_axes_self_update, f46_theme_schema, f47_dashboard_tabs_and_honesty]:
+               f43_sample_window, f44_stable_axis_gate, f45_stable_axes_self_update, f46_theme_schema, f47_dashboard_tabs_and_honesty,
+               f48_stock_detail_window]:
         try:
             fn()
         except Exception as e:

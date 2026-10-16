@@ -277,7 +277,8 @@ def _card(r: ThemeResult, rank: int) -> str:
                  + "".join(f"<li>{_e(n)}</li>" for n in r.notes) + "</ul></details>")
 
     tick_html = " · ".join(
-        f'<span title="{_e(NAMES.get(t.upper(), ""))}">{_e(t)}</span>' for t in r.tickers)
+        f'<span data-tk="{_e(t)}" title="{_e(NAMES.get(t.upper(), ""))}">{_e(t)}</span>'
+        for t in r.tickers)
     nc = sp.get("n_customers", 0)
     cust_txt = f" · 고객군 {nc}개사" if nc else " · 고객군 미지정"
     tops = r.top_axes
@@ -596,7 +597,8 @@ def _tv_pick_cards(ranked: list[ThemeResult]) -> str:
         cards.append(
             f'<section class="tv-card tv-pick">'
             f'<div class="tv-ph"><span class="tv-ico pick">{k}</span>'
-            f'<b>{_e(name or t)}</b><span class="tv-chip tk">{_e(t)}</span></div>'
+            f'<b data-tk="{_e(t)}">{_e(name or t)}</b>'
+            f'<span class="tv-chip tk" data-tk="{_e(t)}">{_e(t)}</span></div>'
             f'<div class="tv-px">{price}<small>USD</small>'
             f'<span class="tv-px-c">12개월 {_tv_chg(s_.get("abs_12m"))}</span></div>'
             f'{_tv_area(s_.get("spark") or [])}'
@@ -893,7 +895,7 @@ def _stock_table(r: ThemeResult) -> str:
         if s.get("annual_basis"):
             conm = (conm + " · 연간재무 기준").strip(" ·")
         rows.append(
-            f'<tr class="{cls}"><th scope="row">{_e(s["ticker"])}'
+            f'<tr class="{cls}"><th scope="row" data-tk="{_e(s["ticker"])}">{_e(s["ticker"])}'
             f'<span class="coname">{_e(conm)}</span></th>'
             f'<td class="num"><strong>{num("total", "{:.0f}", "")}</strong></td>'
             f'<td class="num">{num("benefit", "{:.0f}", "")}</td>'
@@ -1575,6 +1577,135 @@ document.addEventListener('DOMContentLoaded',function(){
 """
 
 
+# ---------------------------------------------------------------- 종목 상세 창
+# 티커·회사명을 누르면 뜨는 창. 미국 실적발표 정리(us-earnings-screening)의
+# 이미 라이브로 검증된 창을 그대로 옮겨 왔다 — JS·CSS 는 별도 파일
+# (screener/detail.js·detail.css)로 두고 읽어서 끼운다. f-string 안에 직접 쓰면
+# JS 중괄호를 f-string 이 삼키므로(TAB_JS 와 같은 이유) 모듈 상수로만 다룬다.
+# 서버 중계(/api/ohlcv·fin·news·profile)는 screener/detail_api.js — run.py 가
+# _worker.js 에 이어 붙인다.
+_HERE = Path(__file__).resolve().parent
+DETAIL_CSS = (_HERE / "detail.css").read_text(encoding="utf-8")
+DETAIL_JS = (_HERE / "detail.js").read_text(encoding="utf-8")
+
+# 창 HTML — 원본(template.py 의 <div id="ov">)과 같은 구조. 바뀐 것: 맨 앞에
+# '스크리너 진단' 탭, 메모는 이 브라우저에만 저장, 캔들 색 문구.
+DETAIL_HTML = """
+<div id="ov" hidden><div id="dlg" role="dialog" aria-modal="true" aria-labelledby="dtitle">
+ <div class="dhead">
+  <div><h2 id="dtitle"></h2><div class="dsub" id="dsub"></div></div>
+  <div class="dact">
+   <div class="seg" id="tf">
+    <button data-t="d" class="on">일</button><button data-t="w">주</button><button data-t="m">월</button>
+   </div>
+   <div class="seg" id="rng">
+    <button data-d="1095" class="on">3년</button><button data-d="365">1년</button>
+    <button data-d="183">6개월</button><button data-d="91">3개월</button>
+   </div>
+   <button class="tab" id="dlog" title="세로축을 로그로 — 몇 배씩 움직인 구간도 한눈에">로그축</button>
+   <button class="ghost" id="dclose" title="닫기 (Esc)">✕</button>
+  </div>
+ </div>
+ <div class="dtabs" id="dtabs">
+  <button data-p="diag" class="on">스크리너 진단</button>
+  <button data-p="chart">차트</button>
+  <button data-p="fin">분기 실적</button>
+  <button data-p="year">연간 실적</button>
+  <button data-p="news">뉴스</button>
+  <button data-p="about">기업 개요</button>
+  <button data-p="doc">보고서</button>
+  <button data-p="memo">메모</button>
+ </div>
+
+ <div class="pane on" id="p-diag"><div id="diagbox"></div></div>
+
+ <div class="pane" id="p-chart">
+  <div class="dind" id="dind"></div>
+  <div class="dleg" id="dleg"></div>
+  <div class="dchart"><canvas id="cv"></canvas><div id="tip"></div><div id="cmsg"></div></div>
+  <div class="dfoot">휠로 확대·축소, 끌어서 좌우 이동, 더블클릭으로 원래대로 · 캔들은 상승 초록·하락 빨강 · 일목균형표 9/26/52 · 일/주/월 단추로 시간축 변경(주봉·월봉은 일봉을 묶어 만든다) · 위 기간 단추는 차트 탭에 적용 · 출처: 야후 파이낸스</div>
+ </div>
+
+ <div class="pane" id="p-fin">
+  <div class="fin" id="findata"></div>
+  <div class="finnote" id="finnote"></div>
+ </div>
+
+ <div class="pane" id="p-year">
+  <div class="fin" id="yeardata"></div>
+  <div class="finnote" id="yearnote"></div>
+ </div>
+
+ <div class="pane" id="p-news"><div id="newsbox"></div></div>
+ <div class="pane" id="p-about"><div id="aboutbox"></div></div>
+
+ <div class="pane" id="p-doc"><div id="dlinks"></div></div>
+
+ <div class="pane" id="p-memo">
+  <div class="lgroup"><h3>이 종목 메모</h3>
+   <textarea id="dmemo" placeholder="생각한 것을 적어 두세요. 이 브라우저에만 저장됩니다."></textarea>
+   <div class="finnote" id="dmemomsg"></div>
+  </div>
+ </div>
+</div></div>
+"""
+
+
+def _r(v, d=1):
+    return None if v is None else round(float(v), d)
+
+
+def _detail_data(ranked: list[ThemeResult]) -> dict:
+    """상세 창 '스크리너 진단' 탭이 쓰는 숫자 — 종목 행과 테마 결과에서 필요한 것만.
+
+    페이지에 JSON 으로 심는다(서버를 부르지 않고 바로 보이게). 소수 한 자리로
+    줄여 크기를 작게 유지한다.
+    """
+    try:
+        cik = json.loads((_HERE.parent / "data" / "ticker_cik.json")
+                         .read_text(encoding="utf-8"))
+    except Exception:
+        cik = {}
+    picks = {s_["ticker"]: k for k, (_o, _p, _r_, s_, _t) in
+             enumerate(top_pick_rows(ranked), 1)}
+    themes, stocks = {}, {}
+    for i, r in enumerate(ranked, 1):
+        tag, _cls, text = _verdict(r)
+        u3 = next((x for x in r.unpriced if x.key == "U3"), None)
+        rel = u3.raw if u3 is not None and isinstance(u3.raw, (int, float)) else None
+        themes[r.name] = {"i": i, "v": tag, "vt": text,
+                          "cs": _r(r.catalyst_score, 0), "us": _r(r.unpriced_score, 0),
+                          "rel": _r(rel)}
+        n = len(r.stocks)
+        for k, s in enumerate(r.stocks, 1):
+            t = s["ticker"].upper()
+            if t in stocks:                      # 한 종목 한 테마(F46) — 혹시 몰라 첫 것만
+                continue
+            row = {"name": NAMES.get(t, ""), "theme": r.name, "rank": k, "n": n,
+                   "pick": picks.get(s["ticker"]), "cik": cik.get(t)}
+            for key in ("total", "benefit", "upside"):
+                row[key] = _r(s.get(key), 0)
+            for key in ("rev_yoy", "rev_accel", "opm_delta", "op_margin", "ret_1m",
+                        "ret_3m", "abs_12m", "rel_12m", "drawdown", "derate",
+                        "earn_react", "eps_surprise"):
+                row[key] = _r(s.get(key))
+            row["last"] = _r(s.get("last"), 2)
+            row["earn_date"] = s.get("earn_date")
+            row["annual_basis"] = bool(s.get("annual_basis"))
+            # '왜 아직 안 올랐나' 는 덜 오른 종목에만 의미가 있다(F38 의 진단 그대로).
+            a12 = s.get("abs_12m")
+            row["why"] = why_flat(rel, s) if a12 is None or a12 < 20 else None
+            stocks[t] = {k2: v for k2, v in row.items() if v is not None}
+    return {"stocks": stocks, "themes": themes}
+
+
+def _detail_script(ranked: list[ThemeResult]) -> str:
+    # </script> 가 데이터 안에 들어가도 스크립트가 끊기지 않게 '</' 를 바꿔 쓴다.
+    data = json.dumps(_detail_data(ranked), ensure_ascii=False,
+                      separators=(",", ":")).replace("</", "<\\/")
+    return f"<script>window.SCR_DETAIL={data};</script>"
+
+
 def _theme_chips(ranked: list[ThemeResult]) -> str:
     """상세 탭 머리의 테마 점프 칩 — 30개를 스크롤로 찾지 않게."""
     chips = []
@@ -1635,7 +1766,7 @@ def build_html(results: list[ThemeResult], *, benchmark: str = "SPY") -> str:
 <html lang="ko"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>미국 섹터 스크리너 — 촉매 × 미반영</title>
-<style>{CSS}</style><script>{THEME_JS}</script></head>
+<style>{CSS}</style><style>{DETAIL_CSS}</style><script>{THEME_JS}</script></head>
 <body><div class="viz-root"><div class="wrap">
 <button class="toggle" id="themeBtn">라이트/다크</button>
 
@@ -1688,6 +1819,9 @@ def build_html(results: list[ThemeResult], *, benchmark: str = "SPY") -> str:
 </section>
 
 <script>{TAB_JS}</script>
+{DETAIL_HTML}
+{_detail_script(ranked)}
+<script>{DETAIL_JS}</script>
 
 <div class="foot">
 <p><strong>읽는 법.</strong> 촉매 점수는 9개 축(낙수·공급여력·신기술·설비노후·정책·캐펙스·스프레드·재고·병목)의

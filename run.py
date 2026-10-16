@@ -56,6 +56,9 @@ export default {
         });
       }
     }
+    // 종목 상세 창의 서버 중계(screener/detail_api.js) — 정적 파일보다 먼저.
+    const api = await detailApi(new URL(request.url));
+    if (api) return api;
     const res = await env.ASSETS.fetch(request);
     // HTML 은 캐시 금지 — 매일 갱신되는데 브라우저가 어제 판을 계속 보여줘
     // "안 바뀌었다"는 혼란이 반복됐다. 항상 재검증시킨다.
@@ -71,8 +74,17 @@ export default {
 """
 
 
+# 종목 상세 창이 부르는 /api/ohlcv·fin·news·profile 중계 함수. 별도 파일로
+# 두고 _worker.js 를 만들 때 앞에 이어 붙인다(_WORKER_JS 의 fetch 가 부른다).
+_DETAIL_API = ROOT / "screener" / "detail_api.js"
+
+
+def worker_js() -> str:
+    return _DETAIL_API.read_text(encoding="utf-8") + "\n" + _WORKER_JS
+
+
 def _install_gate() -> None:
-    (OUT / "_worker.js").write_text(_WORKER_JS, encoding="utf-8")
+    (OUT / "_worker.js").write_text(worker_js(), encoding="utf-8")
 
 
 def _append_history(results) -> None:
