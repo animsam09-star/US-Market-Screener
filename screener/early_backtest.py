@@ -181,7 +181,10 @@ def _st(v: list[float]) -> dict | None:
         return None
     return {"n": len(v), "mean": round(statistics.fmean(v), 2),
             "median": round(statistics.median(v), 2),
-            "hit": round(100.0 * sum(1 for x in v if x > 0) / len(v), 1)}
+            "hit": round(100.0 * sum(1 for x in v if x > 0) / len(v), 1),
+            # 크게 이김/짐 — 50%대 이김 비율만으로는 '반반'과 구별이 안 된다
+            "big": round(100.0 * sum(1 for x in v if x > 20) / len(v), 1),
+            "bad": round(100.0 * sum(1 for x in v if x < -20) / len(v), 1)}
 
 
 def _mgap(a: str, b: str) -> int:
@@ -244,6 +247,8 @@ def tier_of(fund_now: set, fund_prev: set, mkt_ma200) -> str | None:
 
 # 순서 = 과거 성적 순(2026-10-16: 65% · 65% · 56% · 52%, 평소 52%)
 TIERS = ("실물 2개 이상", "시장 약세 중 실물 신호", "실물 신호 이어짐", "실물 신호 막 켜짐")
+# 평소(52%)보다 두 기간 모두 뚜렷이 나았던 단계 — 나머지는 '반반 수준'
+STRONG = ("실물 2개 이상", "시장 약세 중 실물 신호")
 
 
 def tier_stats(recs: list[dict]) -> dict:

@@ -1472,6 +1472,38 @@ def f30_penetration_units():
     check("F30 100% 아님", pen[-1][1] < 95, f"{pen[-1][1]:.1f}")
 
 
+# ---------------------------------------------------------------- F55
+def f55_zoom_and_coinflip():
+    """화면 배율·카드 크게 보기·반반 수준 접기(2026-10-16).
+
+    ①html zoom 을 걸면 창 폭 미디어쿼리가 실제 배치 폭과 어긋난다 → 폭 구간은 JS 클래스
+    ②vw·vh 도 배율과 어긋난다 → --vw100·--vh100 ③'50%대는 반반'(사용자) → 의미 있는
+    두 조건만 위, 나머지는 접기.
+    """
+    from pathlib import Path
+    import screener.dashboard as db
+    from screener.signals import ThemeResult
+    root = Path(__file__).resolve().parent.parent
+    check("F55 폭 구간 미디어쿼리 제거", "@media (min-width:1400px)" not in db.CSS
+          and ":root.ew-lg .cardcols" in db.CSS and "ew-xl" in db.SCALE_JS, "")
+    css = (root / "screener" / "detail.css").read_text(encoding="utf-8")
+    js = (root / "screener" / "detail.js").read_text(encoding="utf-8")
+    check("F55 상세 창 vh·vw 는 배율 변수", "var(--vh100" in css and "96vw" not in css, "")
+    check("F55 차트 마우스 좌표는 배율로 나눔", js.count("/ZZ()") >= 3, "")
+    check("F55 카드 크게 보기", "cloneNode" in db.CARDZOOM_JS and "Escape" in db.CARDZOOM_JS, "")
+
+    def mser(vals, y=2024):
+        return [(f"{y + (i // 12)}-{i % 12 + 1:02d}-01", v) for i, v in enumerate(vals)]
+    r = ThemeResult(name="W", thesis="", tickers=["AA"])
+    r.series = {"orders": mser([100, 99, 98, 97, 96, 95, 99, 102, 104]), "mkt_ma200": 4.0}
+    h = db._early_board([r])
+    check("F55 반반 수준은 접기 + 의미 있는 조건 없음 안내",
+          "eb-more" in h and "반반 수준" in h and "없습니다" in h, h[:300])
+    r.series["mkt_ma200"] = -3.0
+    h2 = db._early_board([r])
+    check("F55 시장 약세 중 실물 신호는 위로", "eb-more" not in h2 and "W" in h2, h2[:300])
+
+
 # ---------------------------------------------------------------- F54
 def f54_signal_strength_tiers():
     """예측력 개선(2026-10-16) — 실물 신호만 세고 강도 단계로 정렬.
@@ -1812,7 +1844,7 @@ def f51_early_signals():
     check("F51 꾸준한 상승·미세 변화는 침묵", db._early_signals(q) == [],
           str(db._early_signals(q)))
     h = db._early_board([r, q])
-    check("F51 보드: 틀릴 수 있다는 라벨", "틀릴 수 있지만" in h and "X" in h, "")
+    check("F51 보드: 의미 있는 조건만 위·반반은 접기", "X" in h and "두 가지뿐" in h, "")
 
 
 # ---------------------------------------------------------------- F50
@@ -1986,7 +2018,7 @@ def main() -> int:
                f43_sample_window, f44_stable_axis_gate, f45_stable_axes_self_update, f46_theme_schema, f47_dashboard_tabs_and_honesty,
                f48_stock_detail_window, f49_backtest_easy_page, f50_flow_analysis, f51_early_signals,
                f52_early_record_and_new_data, f53_fmp_estimates,
-               f54_signal_strength_tiers]:
+               f54_signal_strength_tiers, f55_zoom_and_coinflip]:
         try:
             fn()
         except Exception as e:

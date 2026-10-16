@@ -18,7 +18,7 @@
  font-size:13.5px;line-height:1.5;color:var(--ink)}
 #ov[hidden]{display:none}
 #dlg{background:var(--card);border:1px solid var(--line);border-radius:12px;
- width:min(1460px,96vw);max-height:calc(100vh - 36px);overflow:auto;
+ width:min(1460px,calc(var(--vw100,100vw)*.96));max-height:calc(var(--vh100,100vh) - 36px);overflow:auto;
  box-shadow:0 18px 50px rgba(0,0,0,.28);text-align:left}
 #ov .dhead{display:flex;gap:12px;align-items:flex-start;padding:16px 18px 10px;
  position:sticky;top:0;background:var(--card);border-bottom:1px solid var(--line);z-index:2}

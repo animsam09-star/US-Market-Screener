@@ -816,7 +816,7 @@ def _early_signals(r: ThemeResult) -> list[tuple[str, str]]:
 
 
 NEW_B = "<b class='new'>NEW</b>"
-from .early_backtest import FUND as _FUND, TIERS as _TIERS, tier_of as _tier_of
+from .early_backtest import FUND as _FUND, STRONG as _STRONG, TIERS as _TIERS, tier_of as _tier_of
 
 
 def _trim_month(series: list) -> list:
@@ -863,10 +863,18 @@ def _tier_rec(t: str | None) -> str:
     if not a or not base:
         return ""
     both = (f" · 2019년 전 {e['hit']:.0f}% / 후 {l_['hit']:.0f}%" if e and l_ else "")
-    return (f"과거 이런 경우 1년 뒤 시장보다 더 오른 비율 <b>{a['hit']:.0f}%</b> "
-            f"(평소 {base['hit']:.0f}%){both}")
+    if t not in _STRONG:
+        return (f"<span class='coin'>반반 수준</span> 과거 이런 경우 시장을 이긴 비율 {a['hit']:.0f}%"
+                f"(평소 {base['hit']:.0f}%) — 동전 던지기에 가까워 참고만 하세요")
+    big = (f" · 시장보다 20%p 넘게 더 오른 비율 <b>{a['big']:.0f}%</b>(평소 {base.get('big', 0):.0f}%)"
+           if a.get("big") is not None else "")
+    return (f"과거 이런 경우 1년 뒤 시장을 이긴 비율 <b>{a['hit']:.0f}%</b>(평소 {base['hit']:.0f}%) · "
+            f"중간값 <b>{a['median']:+.0f}%p</b>(평소 {base.get('median', 0):+.0f}%p){big}{both}")
+# 화면 이름 — 50%대 이김 비율은 동전 던지기와 구별이 안 된다(사용자 지적)
+_GRADE_LABEL = {"잘 맞았음": "의미 있음", "조금 나음": "반반 수준", "평소와 비슷": "반반 수준",
+                "기록 적음": "기록 적음"}
 _GRADE_W = {"잘 맞았음": 3, "조금 나음": 2, "평소와 비슷": 1, "기록 적음": 1}
-_GRADE_CLS = {"잘 맞았음": "er-good", "조금 나음": "er-ok", "평소와 비슷": "er-flat",
+_GRADE_CLS = {"잘 맞았음": "er-good", "조금 나음": "er-flat", "평소와 비슷": "er-flat",
               "기록 적음": "er-few"}
 
 
@@ -887,9 +895,11 @@ def _early_rec(name: str) -> str:
         return ("<span class='er er-none'>과거 기록 없음 — 오늘부터 쌓습니다</span>")
     f = s_["fwd12"]
     g = s_["grade"]
-    return (f"<span class='er {_GRADE_CLS.get(g, 'er-few')}'>{_e(g)}</span>"
-            f"<span class='er-t'>과거 {s_['n_events']}번 켜짐 → 1년 뒤 시장보다 더 오른 비율 "
-            f"<b>{f['hit']:.0f}%</b> (평소 {base['hit']:.0f}%), 평균 {f['mean']:+.0f}%p</span>")
+    lab = _GRADE_LABEL.get(g, g)
+    return (f"<span class='er {_GRADE_CLS.get(g, 'er-few')}'>{_e(lab)}</span>"
+            f"<span class='er-t'>과거 {s_['n_events']}번 켜짐 → 1년 뒤 시장을 이긴 비율 "
+            f"<b>{f['hit']:.0f}%</b> (평소 {base['hit']:.0f}%), 중간값 {f.get('median', 0):+.0f}%p "
+            f"(평소 {base.get('median', 0):+.0f}%p)</span>")
 
 
 def _early_last(theme: str, name: str) -> str:
@@ -1004,73 +1014,84 @@ def _early_log_html() -> str:
     return f"<div class='eb-log'><h3>최근 30일 신호 변화</h3><ul>{lis}</ul></div>"
 
 
-def _early_board(ranked: list[ThemeResult]) -> str:
-    """한눈에 상단 — 판정과 무관하게 초기 신호가 켜진 테마. 새로 켜진 것·과거에 잘 맞은 것 먼저."""
-    rows = []
-    mkt_now = None
-    for i, r in enumerate(ranked, 1):
-        sig = _early_sorted(r)
-        if mkt_now is None:
-            mkt_now = r.series.get("mkt_ma200")
-        if sig:
-            stg = _strength(r)
-            nnew = sum(1 for n, _ in sig if _early_age(r.name, n)[1])
-            w = sum(_GRADE_W.get(_early_grade(n), 0) for n, _ in sig)
-            rows.append((stg["rank"], -len(stg["fund"]), -nnew, -w, i, r, sig, stg))
-    base = ((EARLY_STATS.get("base") or {}).get("fwd12")) or {}
-    period = EARLY_STATS.get("period") or []
-    rec_note = ""
-    if base and period and period[0]:
-        rec_note = (f" 신호별 과거 성적은 {period[0][:4]}년부터 매달 다시 계산한 것 — 아무 때나 골랐을 때 "
-                    f"1년 뒤 시장보다 더 오른 비율은 {base['hit']:.0f}%입니다(이보다 높아야 쓸모 있는 신호).")
-    if not rows:
-        return ("<section class='tv-card eb'><p class='nodata'>지금 방향이 바뀌는 "
-                "초기 신호가 켜진 테마가 없습니다.</p>" + _early_log_html() + "</section>")
-    rows.sort(key=lambda x: x[:5])
-    items = []
-    for _rk, _nf, _nn, _w, i, r, sig, stg in rows[:14]:
-        n = len(stg["fund"])
-        tag, cls, _t = _verdict(r)
-        chips = ""
-        for nm, _ in sig:
-            nb = NEW_B if _early_age(r.name, nm)[1] else ""
-            gc = _GRADE_CLS.get(_early_grade(nm), "er-none")
-            ref = "" if nm in _FUND else " es-ref"
-            chips += f"<span class='es {gc}{ref}'>{nb}{_e(nm)}</span>"
-        if stg["tier"]:
-            chips = (f"<span class='et et-{_TIERS.index(stg['tier'])}'>{_e(stg['tier'])}</span>"
-                     + chips)
-        items.append(
-            f"<a class='eb-row' href='#t{i}'><span class='eb-n{'' if n else ' eb-n0'}'>{n}</span>"
+def _early_row(i: int, r: ThemeResult, sig: list, stg: dict) -> str:
+    n = len(stg["fund"])
+    tag, _cls, _t = _verdict(r)
+    chips = ""
+    for nm, _ in sig:
+        nb = NEW_B if _early_age(r.name, nm)[1] else ""
+        gc = _GRADE_CLS.get(_early_grade(nm), "er-none")
+        ref = "" if nm in _FUND else " es-ref"
+        chips += f"<span class='es {gc}{ref}'>{nb}{_e(nm)}</span>"
+    if stg["tier"]:
+        chips = (f"<span class='et et-{_TIERS.index(stg['tier'])}'>{_e(stg['tier'])}</span>"
+                 + chips)
+    return (f"<a class='eb-row' href='#t{i}'><span class='eb-n{'' if n else ' eb-n0'}'>{n}</span>"
             f"<span class='eb-nm'><b>{_e(r.name)}</b><span class='tv-chip'>{_e(tag)}</span></span>"
             f"<span class='eb-sig'>{chips}</span></a>")
-    legend = ("<p class='eb-leg'><span class='es er-good'>잘 맞았음</span>"
-              "<span class='es er-ok'>조금 나음</span><span class='es er-flat'>평소와 비슷</span>"
-              "<span class='es er-few'>기록 적음</span><span class='es er-none'>기록 없음</span>"
-              " — 같은 신호가 과거에 켜졌을 때의 성적</p>")
+
+
+def _early_board(ranked: list[ThemeResult]) -> str:
+    """한눈에 상단 — 과거에 시장을 뚜렷이 더 이긴 조건(STRONG)만 위에, 나머지는 '반반 수준'으로 접는다.
+
+    사용자(2026-10-16): "50%대는 그냥 반반인 건데 이러면 오를 수도? 아닐 수도? 의미가 너무 없어".
+    """
+    strong, weak = [], []
+    mkt_now = None
+    for i, r in enumerate(ranked, 1):
+        if mkt_now is None:
+            mkt_now = r.series.get("mkt_ma200")
+        sig = _early_sorted(r)
+        if not sig:
+            continue
+        stg = _strength(r)
+        nnew = sum(1 for n, _ in sig if _early_age(r.name, n)[1])
+        key = (stg["rank"], -len(stg["fund"]), -nnew, i)
+        (strong if stg["tier"] in _STRONG else weak).append((key, i, r, sig, stg))
+    strong.sort(key=lambda x: x[0])
+    weak.sort(key=lambda x: x[0])
+    base = ((EARLY_STATS.get("base") or {}).get("fwd12")) or {}
     tiers = EARLY_STATS.get("tiers") or {}
-    tline = ""
-    if tiers and base:
-        parts = []
-        for k, t in enumerate(_TIERS):
-            a = (tiers.get(t) or {}).get("all")
-            if a:
-                parts.append(f"<span class='et et-{k}'>{_e(t)}</span> {a['hit']:.0f}%")
-        tline = ("<p class='eb-tiers'>강한 순서(과거 1년 뒤 시장보다 더 오른 비율, 평소 "
-                 f"{base['hit']:.0f}%): " + " · ".join(parts) + "</p>")
+
+    def tstat(t):
+        a = (tiers.get(t) or {}).get("all") or {}
+        if not a or not base:
+            return ""
+        big = f" · 크게(+20%p↑) 이긴 비율 {a['big']:.0f}%" if a.get("big") is not None else ""
+        return f"이긴 비율 <b>{a['hit']:.0f}%</b> · 중간값 <b>{a['median']:+.0f}%p</b>{big}"
+
+    head = ""
+    if base:
+        bbig = f" · 크게 이긴 비율 {base['big']:.0f}%" if base.get("big") is not None else ""
+        lines = "".join(
+            f"<li><span class='et et-{_TIERS.index(t)}'>{_e(t)}</span> {tstat(t)}</li>"
+            for t in _STRONG)
+        head = ("<div class='eb-strong-h'><p class='eb-note'><b>과거에 시장을 뚜렷이 더 이긴 조건은 "
+                "두 가지뿐입니다.</b> 아무 때나 골랐을 때(평소)는 1년 뒤 시장을 이긴 비율 "
+                f"{base['hit']:.0f}% · 중간값 {base.get('median', 0):+.0f}%p{bbig} — 50%대는 사실상 "
+                "동전 던지기라 따로 접어 두었습니다.</p><ul class='eb-sl'>" + lines + "</ul></div>")
     mline = ""
     if mkt_now is not None:
         if mkt_now < 0:
             mline = ("<p class='eb-mkt eb-mkt-weak'>지금 시장(SPY)이 200일 평균선 아래입니다 "
-                     f"({mkt_now:+.0f}%). 과거엔 이런 때 켜진 실물 신호가 가장 잘 맞았습니다.</p>")
+                     f"({mkt_now:+.0f}%) — 지금 켜지는 실물 신호는 '시장 약세 중' 조건에 해당합니다.</p>")
         else:
-            mline = (f"<p class='eb-mkt'>지금 시장(SPY)은 200일 평균선 위({mkt_now:+.0f}%)입니다. "
-                     "시장 약세 때 켜지는 실물 신호가 과거 가장 강했습니다 — 지금은 해당 없음.</p>")
-    return ("<section class='tv-card eb'><p class='eb-note'>판정과 상관없이, 데이터의 방향이 막 "
-            "바뀐 테마입니다. 틀릴 수 있지만 먼저 보고 판단하시라고 올립니다. 숫자 = 켜진 <b>실물 신호</b> "
-            "개수(재고·수주·생산·가동률·매출·선행 지표 — 과거에 예측력이 있던 것만 셉니다). 흐린 칩 = "
-            "참고 신호, NEW = 최근 7일 안에 새로 켜짐." + rec_note + "</p>" + tline + mline + legend
-            + "".join(items) + _early_log_html() + "</section>")
+            mline = (f"<p class='eb-mkt'>지금 시장(SPY)은 200일 평균선 위({mkt_now:+.0f}%) — "
+                     "'시장 약세 중' 조건은 지금 해당 없음.</p>")
+    if strong:
+        main = "".join(_early_row(i, r, sig, stg) for _k, i, r, sig, stg in strong[:12])
+    else:
+        main = ("<p class='eb-none'>지금 이 두 조건에 해당하는 테마는 <b>없습니다</b>. "
+                "실물 신호가 2개 이상 겹치거나, 시장이 200일선 아래로 내려간 상태에서 실물 신호가 켜지면 "
+                "여기 맨 위에 뜹니다.</p>")
+    more = ""
+    if weak:
+        rows = "".join(_early_row(i, r, sig, stg) for _k, i, r, sig, stg in weak[:20])
+        more = ("<details class='eb-more'><summary>반반 수준 신호가 켜진 테마 "
+                f"{len(weak)}개 — 과거 이긴 비율 50%대(동전 던지기에 가까움) · 참고만</summary>"
+                + rows + "</details>")
+    return ("<section class='tv-card eb'>" + head + mline + main + more
+            + _early_log_html() + "</section>")
 
 
 def _flow_analysis(r: ThemeResult, tag: str) -> str:
@@ -1786,21 +1807,19 @@ CSS = """
 .sp-list .vd{font-size:11.5px}
 .sp-co{display:inline-block;margin-left:8px;font-size:12.5px;color:var(--text-secondary)}
 .sp-why{display:block;margin-top:3px;font-size:12.5px;line-height:1.5;color:var(--text-secondary)}
-@media (min-width:1400px){
- .viz-root .wrap{max-width:min(96vw,2900px)}
- .hero{display:grid;grid-template-columns:minmax(0,1.75fr) minmax(0,1fr);
+/* 폭 구간은 '배율 적용 뒤 폭'(JS 가 html 에 ew-* 클래스로 단다) — 미디어쿼리는 창 폭이라
+   배율을 키우면 실제 배치 폭과 어긋난다 */
+:root.ew-lg .viz-root .wrap{max-width:min(calc(var(--vw100,100vw)*.96),2900px)}
+:root.ew-lg .hero{display:grid;grid-template-columns:minmax(0,1.75fr) minmax(0,1fr);
   gap:0 36px;align-items:start}
- .hero-sc .scatter{width:100%;max-width:760px;height:auto;display:block;margin:0 auto}
- .prio-l{columns:2;column-gap:30px}
- .prio-l li{break-inside:avoid}
- .cardcols{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:18px 28px;align-items:start}
- .cardcols .card{margin:0}
-}
-@media (min-width:2200px){
- .hero{grid-template-columns:minmax(0,2fr) minmax(0,1fr)}
- .cardcols{grid-template-columns:repeat(3,minmax(0,1fr));gap:18px 30px}
- .prio-l{columns:3}
-}
+:root.ew-lg .hero-sc .scatter{width:100%;max-width:760px;height:auto;display:block;margin:0 auto}
+:root.ew-lg .prio-l{columns:2;column-gap:30px}
+:root.ew-lg .prio-l li{break-inside:avoid}
+:root.ew-lg .cardcols{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:18px 28px;align-items:start}
+:root.ew-lg .cardcols .card{margin:0}
+:root.ew-xl .hero{grid-template-columns:minmax(0,2fr) minmax(0,1fr)}
+:root.ew-xl .cardcols{grid-template-columns:repeat(3,minmax(0,1fr));gap:18px 30px}
+:root.ew-xl .prio-l{columns:3}
 .tabbar{position:sticky;top:0;z-index:30;display:flex;gap:6px;padding:10px 0 8px;
  background:var(--surface-1);border-bottom:1px solid var(--border);margin:14px 0 18px}
 .tabbtn{font:inherit;font-weight:700;font-size:14.5px;padding:8px 16px;border-radius:9px;
@@ -1873,8 +1892,17 @@ CSS = """
 .es-tier-ref{color:var(--muted)}
 .eb-tiers{font-size:12.5px;color:var(--muted);margin:2px 0 6px;display:flex;flex-wrap:wrap;gap:4px 8px;align-items:center}
 .eb-mkt{font-size:13px;margin:4px 0 8px;color:var(--text-secondary)}
+.eb-sl{list-style:none;margin:4px 0 8px;padding:0;display:grid;gap:5px;font-size:13.5px;color:var(--text-secondary)}
+.eb-sl b{color:var(--text-primary)}
+.eb-none{font-size:14px;margin:8px 0 10px;padding:10px 12px;border:1px dashed var(--tv-line);border-radius:8px;
+ color:var(--text-secondary)}
+.eb-more{margin-top:10px;border-top:1px solid var(--tv-line);padding-top:8px}
+.eb-more summary{cursor:pointer;font-size:13.5px;color:var(--muted);padding:4px 0}
+.eb-more .eb-row{opacity:.75}
+.coin{font-size:11.5px;font-weight:800;padding:1px 7px;border-radius:4px;border:1px dashed var(--tv-line);
+ color:var(--muted);margin-right:4px}
 .eb-mkt-weak{color:#2e9e6b;font-weight:700}
-@media (max-width:760px){.eb-row{grid-template-columns:34px 1fr}.eb-sig{grid-column:2}}
+:root.ew-xxs .eb-row{grid-template-columns:34px 1fr}:root.ew-xxs .eb-sig{grid-column:2}
 /* ---- TradingView 톤: 검은 바탕·얇은 테두리·초록/빨강 등락 ---- */
 .viz-root{--tv-up:#089981;--tv-dn:#f23645;--tv-link:#2962ff;--tv-card:#ffffff;
  --tv-line:#e0e3eb;--tv-hover:#f0f3fa;--tv-chip:#f0f3fa}
@@ -1892,7 +1920,7 @@ CSS = """
  align-items:stretch}
 .tv-g3{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:16px}
 .tv-g2{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px;margin-top:30px}
-@media (max-width:1100px){.tv-g1,.tv-g3,.tv-g2{grid-template-columns:1fr}}
+:root.ew-sm .tv-g1,:root.ew-sm .tv-g3,:root.ew-sm .tv-g2{grid-template-columns:1fr}
 .tv-main .sigrow{border:0;background:none;padding:2px 2px 10px;margin:0;border-radius:0}
 .tv-main .scatter{width:100%;max-width:820px;height:auto;display:block;margin:0 auto}
 .tv-main .legend{margin-top:6px}
@@ -2145,11 +2173,30 @@ letter-spacing:0;max-width:210px;overflow:hidden;text-overflow:ellipsis}
 color:var(--muted);font-size:12px}
 .foot code{background:var(--surface-1);padding:1px 5px;border-radius:4px;
 border:1px solid var(--border)}
-.toggle{position:fixed;top:14px;right:16px;background:var(--surface-1);
+.topctl{position:fixed;top:14px;right:16px;z-index:35;display:flex;gap:6px;align-items:center}
+.szb{background:var(--surface-1);border:1px solid var(--border);color:var(--text-secondary);
+ border-radius:8px;padding:6px 10px;cursor:pointer;font:inherit;font-size:12px}
+.szb:hover,.toggle:hover{color:var(--text-primary)}
+.szv{font-size:12px;color:var(--text-secondary);min-width:38px;text-align:center;
+ font-variant-numeric:tabular-nums}
+#pane-cards .card{cursor:zoom-in}
+#pane-cards .card a,#pane-cards .card button,#pane-cards .card summary,
+#pane-cards .card [data-tk]{cursor:pointer}
+.cz-hint{font-size:13px;color:var(--text-secondary);margin:0 0 12px}
+.cz{position:fixed;inset:0;z-index:40;background:rgba(0,0,0,.6);overflow:auto;
+ display:flex;justify-content:center;align-items:flex-start;padding:18px 12px 40px}
+.cz[hidden]{display:none}
+.cz-box{position:relative;zoom:var(--czz,1.3);
+ width:min(980px,calc((var(--vw100,100vw) - 48px)/var(--czz,1.3)))}
+.cz-box .card{margin:0;cursor:auto;box-shadow:0 10px 40px rgba(0,0,0,.45)}
+.cz-x{position:sticky;top:0;float:right;margin:0 0 -40px;z-index:2;font:inherit;font-size:14px;
+ font-weight:700;padding:6px 12px;border-radius:8px;cursor:pointer;
+ background:var(--surface-1);border:1px solid var(--border);color:var(--text-primary)}
+.toggle{position:static;background:var(--surface-1);
 border:1px solid var(--border);color:var(--text-secondary);border-radius:8px;
 padding:6px 11px;cursor:pointer;font:inherit;font-size:12px}
-@media (max-width:820px){.tables{grid-template-columns:1fr}
-.chead{flex-direction:column}}
+:root.ew-xs .tables{grid-template-columns:1fr}
+:root.ew-xs .chead{flex-direction:column}
 """
 
 
@@ -2207,6 +2254,71 @@ document.addEventListener('DOMContentLoaded',function(){
   try{localStorage.setItem('scr-theme',n)}catch(e){}
  });
 });})();
+"""
+
+
+# 화면 배율 — 창 크기(=화면 크기·OS 배율)에 맞춰 html zoom 을 자동으로 건다.
+# 기준 화면 1600×760(CSS px)에서 1배. 작게·크게는 그 위에 곱하는 덧배율(기억).
+SCALE_JS = """
+(function(){var r=document.documentElement,ADJ=1;
+try{ADJ=parseFloat(localStorage.getItem('scr-uiz'))||1}catch(e){}
+function fit(){
+ var w=window.innerWidth||1600,h=window.innerHeight||900;
+ var base=Math.max(0.8,Math.min(2.0,Math.min(w/1600,h/760)));
+ var z=Math.max(0.6,Math.min(2.6,Math.round(base*ADJ*100)/100));
+ r.style.zoom=z;
+ var ew=w/z,eh=h/z;
+ r.style.setProperty('--vw100',ew+'px');r.style.setProperty('--vh100',eh+'px');
+ r.style.setProperty('--czz',Math.max(1.1,Math.min(1.45,(ew-60)/860)).toFixed(2));
+ var c=r.classList;
+ c.toggle('ew-lg',ew>=1400);c.toggle('ew-xl',ew>=2200);c.toggle('ew-sm',ew<1100);
+ c.toggle('ew-xs',ew<820);c.toggle('ew-xxs',ew<760);
+ var l=document.getElementById('szVal');if(l)l.textContent=Math.round(z*100)+'%';
+}
+window.__scrZoom=function(){return parseFloat(r.style.zoom)||1};
+fit();window.addEventListener('resize',fit);
+document.addEventListener('DOMContentLoaded',function(){fit();
+ document.querySelectorAll('[data-sz]').forEach(function(b){b.addEventListener('click',function(){
+  var s=b.dataset.sz;
+  ADJ=s==='0'?1:Math.max(0.6,Math.min(1.8,ADJ*(s==='+'?1.1:1/1.1)));
+  try{localStorage.setItem('scr-uiz',String(ADJ))}catch(e){}
+  fit();if(window.dispatchEvent)window.dispatchEvent(new Event('resize'));
+ })});
+});})();
+"""
+
+# 테마 카드 크게 보기 — 카드를 누르면 같은 카드를 확대해 띄운다(링크·버튼·티커는 그대로 동작).
+CARDZOOM_JS = """
+(function(){
+ var ov=document.getElementById('cz'),body=document.getElementById('czBody');
+ if(!ov||!body)return;
+ function close(){ov.hidden=true;body.innerHTML='';document.body.style.overflow='';}
+ function open(card){
+  var c=card.cloneNode(true);c.removeAttribute('id');
+  c.querySelectorAll('[id]').forEach(function(x){x.removeAttribute('id')});
+  c.classList.remove('flash');
+  body.innerHTML='';body.appendChild(c);ov.hidden=false;ov.scrollTop=0;
+  document.body.style.overflow='hidden';
+ }
+ document.addEventListener('click',function(e){
+  var t=e.target;if(!t.closest)return;
+  if(t.closest('#cz'))return;
+  var card=t.closest('#pane-cards .card');if(!card)return;
+  if(t.closest('a,button,input,select,summary,label,[data-tk]'))return;
+  var sel=window.getSelection?String(window.getSelection()):'';
+  if(sel.length>2)return;                       // 글을 고르는 중이면 열지 않는다
+  open(card);
+ });
+ ov.addEventListener('click',function(e){
+  var t=e.target;
+  if(t===ov||t.closest('.cz-x')){close();return}
+  if(t.closest('a[href^="#t"]'))close();        // 다른 테마로 이동하는 링크
+ });
+ document.addEventListener('keydown',function(e){
+  var d=document.getElementById('ov');
+  if(e.key==='Escape'&&!ov.hidden&&(!d||d.hidden))close();
+ });
+})();
 """
 
 
@@ -2426,9 +2538,13 @@ def build_html(results: list[ThemeResult], *, benchmark: str = "SPY") -> str:
 <html lang="ko"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>미국 섹터 스크리너 — 촉매 × 미반영</title>
-<style>{CSS}</style><style>{DETAIL_CSS}</style><script>{THEME_JS}</script></head>
+<style>{CSS}</style><style>{DETAIL_CSS}</style><script>{THEME_JS}</script><script>{SCALE_JS}</script></head>
 <body><div class="viz-root"><div class="wrap">{_dstat}
-<button class="toggle" id="themeBtn">라이트/다크</button>
+<div class="topctl"><button class="szb" data-sz="-" title="글씨·화면 작게">작게</button>
+<span class="szv" id="szVal" title="화면 배율(창 크기에 맞춰 자동)">100%</span>
+<button class="szb" data-sz="+" title="글씨·화면 크게">크게</button>
+<button class="szb" data-sz="0" title="창 크기에 맞춘 자동 배율로">자동</button>
+<button class="toggle" id="themeBtn">라이트/다크</button></div>
 
 <h1>미국 섹터 스크리너</h1>
 <p class="sub">촉매(왜 오르나) × 미반영(왜 아직 안 올랐나)의 교집합으로 테마를 고른다.
@@ -2466,6 +2582,7 @@ def build_html(results: list[ThemeResult], *, benchmark: str = "SPY") -> str:
 </section>
 
 <section id="pane-cards" hidden>
+<p class="cz-hint">카드를 누르면 크게 볼 수 있습니다(닫기: 바깥 클릭·Esc). 글씨 전체 크기는 오른쪽 위 <b>작게·크게</b>.</p>
 {_theme_chips(ranked)}
 <div class="cardcols">
 {cards}
@@ -2480,7 +2597,9 @@ def build_html(results: list[ThemeResult], *, benchmark: str = "SPY") -> str:
 <div class="panel">{_summary_table(ranked)}</div>
 </section>
 
-<script>{TAB_JS}</script>
+<div class="cz" id="cz" hidden><div class="cz-box"><button class="cz-x" type="button">닫기 ✕</button>
+<div id="czBody"></div></div></div>
+<script>{TAB_JS}</script><script>{CARDZOOM_JS}</script>
 {DETAIL_HTML}
 {_detail_script(ranked)}
 <script>{DETAIL_JS}</script>

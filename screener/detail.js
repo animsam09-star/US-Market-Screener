@@ -130,9 +130,9 @@ function draw(){
  dRaf=0;
  const cv=$("#cv");
  if(!dRows||!dRows.length||!cv.clientWidth)return;
- const dpr=window.devicePixelRatio||1;
+ const dpr=(window.devicePixelRatio||1)*(window.__scrZoom?window.__scrZoom():1);
  const W=cv.clientWidth;
- const H=Math.max(300,Math.min(760,Math.round(window.innerHeight*0.46)));
+ const H=Math.max(300,Math.min(760,Math.round(window.innerHeight/(window.__scrZoom?window.__scrZoom():1)*0.46)));
  cv.width=Math.round(W*dpr);cv.height=Math.round(H*dpr);cv.style.height=H+"px";
  const g=cv.getContext("2d");
  g.setTransform(dpr,0,0,dpr,0,0);g.clearRect(0,0,W,H);
@@ -710,6 +710,8 @@ $("#dlog").onclick=()=>{
 /* ---- 확대·이동 ----
    휠은 마우스가 가리키는 날을 붙잡은 채 창을 넓히고 좁힌다(그 자리가 안 밀린다).
    끌면 좌우로 움직이고, 더블클릭이면 처음 상태로. */
+// 화면 배율(html zoom) — 마우스 좌표는 화면 px, 차트 계산은 배치 px 라 배율로 나눈다
+const ZZ=()=>(window.__scrZoom?window.__scrZoom():1);
 const clampEnd=(v,win,T)=>Math.max(win-1,Math.min(T-1,v));
 let panX=null,panEnd=null;
 $("#cv").addEventListener("wheel",e=>{
@@ -718,7 +720,7 @@ $("#cv").addEventListener("wheel",e=>{
  const T=dRows.length+FWD,cur=geo.i1-geo.i0+1;
  const rect=$("#cv").getBoundingClientRect();
  const at=Math.max(geo.i0,Math.min(geo.i1,
-  Math.round((e.clientX-rect.left-geo.padL)/geo.bw-0.5)+geo.i0));
+  Math.round(((e.clientX-rect.left)/ZZ()-geo.padL)/geo.bw-0.5)+geo.i0));
  const win=Math.max(20,Math.min(T,Math.round(cur*(e.deltaY>0?1.2:1/1.2))));
  let i0=Math.round(at-(at-geo.i0)*win/cur);
  i0=Math.max(0,Math.min(T-win,i0));
@@ -738,11 +740,11 @@ $("#cv").addEventListener("mousemove",e=>{
  const rect=$("#cv").getBoundingClientRect();
  if(panX!=null){                          // 끌어서 이동 — 이때는 십자선을 안 옮긴다
   const T=dRows.length+FWD,win=geo.i1-geo.i0+1;
-  const shift=Math.round((panX-e.clientX)/geo.bw);
+  const shift=Math.round((panX-e.clientX)/ZZ()/geo.bw);
   const nx=clampEnd(panEnd+shift,win,T);
   if(nx!==dEnd){dEnd=nx;scheduleDraw()}
   return}
- const i=Math.round((e.clientX-rect.left-geo.padL)/geo.bw-0.5)+geo.i0;
+ const i=Math.round(((e.clientX-rect.left)/ZZ()-geo.padL)/geo.bw-0.5)+geo.i0;
  const c=Math.max(geo.i0,Math.min(geo.nv,i));
  if(c!==dHover){dHover=c;scheduleDraw()}});
 $("#cv").addEventListener("mouseleave",()=>{
