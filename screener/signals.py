@@ -550,10 +550,13 @@ def evaluate_theme(theme: dict, tmap: dict, bench: list, series_cache: dict) -> 
     res.rebound = bool(px.get("rebound"))
     # 흐름 분석(카드)용 — 판매가격·원가 지수 최근 4년. 실패해도 카드만 생략.
     _ppi = {}
-    for _k, _key in (("ppi_out", "ppi_output"), ("ppi_in", "ppi_input")):
+    for _k, _key in (("ppi_out", "ppi_output"), ("ppi_in", "ppi_input"),
+                     ("cap_util", "capacity_utilization"), ("inv", "inventories"),
+                     ("ship", "shipments"), ("orders", "new_orders"),
+                     ("ip", "industrial_production")):
         if fc.get(_key):
             try:
-                _ppi[_k] = list(fred(fc[_key]))[-60:]
+                _ppi[_k] = list(fred(fc[_key]))[-130:]
             except Exception:
                 pass
     res.series = {

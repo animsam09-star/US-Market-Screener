@@ -1472,6 +1472,53 @@ def f30_penetration_units():
     check("F30 100% 아님", pen[-1][1] < 95, f"{pen[-1][1]:.1f}")
 
 
+# ---------------------------------------------------------------- F51
+def f51_early_signals():
+    """초기 신호 — '미리 아는 게 최우선, 틀려도 된다'(사용자, 2026-10-16).
+
+    수준이 아니라 '꺾임'만 잡는다: 내리던 판매가격의 반등, 원가 급락, 바닥
+    가동률의 반등, 재고/출하 3개월 연속 감소(합계 3%+), 수주·생산 반등, 매출
+    가속 전환, 200일선 회복(1%+). 미세 변화(재고 1.67→1.64, 200일선 +0%)는
+    실측 오탐이라 최소 폭으로 거른다. 꾸준히 좋은 상태는 신호가 아니다.
+    """
+    from datetime import date, timedelta
+    import screener.dashboard as db
+    from screener.signals import ThemeResult
+
+    def mser(vals, y=2024):
+        return [(f"{y + (i // 12)}-{i % 12 + 1:02d}-01", v) for i, v in enumerate(vals)]
+
+    r = ThemeResult(name="X", thesis="", tickers=["A"])
+    r.series = {
+        "ppi_out": mser([100, 98, 95, 92, 90, 88, 86, 85, 88, 91]),        # 반등 시작
+        "ppi_in": mser([100, 100, 100, 100, 100, 100, 100, 95, 90, 85]),   # 3개월 −15%
+        "cap_util": mser([80] * 100 + [70, 69, 68, 69, 70, 71.5]),         # 바닥 탈출
+        "inv": mser([200, 200, 198, 194, 190, 185]),
+        "ship": mser([100] * 6),                                            # 2.0→1.85
+        "orders": mser([100, 99, 98, 97, 96, 95, 99, 101, 103]),            # 반등
+        "rev_yoy": [("2025-03-31", 5.0), ("2025-06-30", 3.0), ("2025-09-30", 7.0)],
+    }
+    d0 = date(2025, 1, 1)
+    px = [100 - i * 0.05 for i in range(220)] + [90 + i * 0.6 for i in range(30)]
+    r.series["price_index"] = [(d0 + timedelta(days=i), v) for i, v in enumerate(px)]
+    names = [n for n, _ in db._early_signals(r)]
+    for want in ("판매가격 반등 시작", "원가 급락", "가동률 바닥 탈출", "재고 소진",
+                 "수주 반등", "매출 가속 전환", "주가 200일선 회복"):
+        check(f"F51 신호: {want}", want in names, str(names))
+
+    q = ThemeResult(name="Y", thesis="", tickers=["A"])
+    q.series = {
+        "ppi_out": mser([80 + i for i in range(10)]),          # 꾸준히 오름 = 꺾임 아님
+        "inv": mser([167, 166.5, 166, 165, 164.5, 164]),       # 1.67→1.64 미세
+        "ship": mser([100] * 6),
+        "rev_yoy": [("2025-03-31", 9.0), ("2025-06-30", 10.0), ("2025-09-30", 11.0)],
+    }
+    check("F51 꾸준한 상승·미세 변화는 침묵", db._early_signals(q) == [],
+          str(db._early_signals(q)))
+    h = db._early_board([r, q])
+    check("F51 보드: 검증 전 라벨", "검증되지 않은 초기 신호" in h and "X" in h, "")
+
+
 # ---------------------------------------------------------------- F50
 def f50_flow_analysis():
     """테마 카드 '흐름 분석' — 꼭지·판매가격 시점·과거 대승 근거·다시 오를 신호.
@@ -1641,7 +1688,7 @@ def main() -> int:
                f38_why_flat_diagnosis, f39_week_changes, f40_earnings_link,
                f41_pead_point_in_time, f42_price_snapshot_fallback,
                f43_sample_window, f44_stable_axis_gate, f45_stable_axes_self_update, f46_theme_schema, f47_dashboard_tabs_and_honesty,
-               f48_stock_detail_window, f49_backtest_easy_page, f50_flow_analysis]:
+               f48_stock_detail_window, f49_backtest_easy_page, f50_flow_analysis, f51_early_signals]:
         try:
             fn()
         except Exception as e:

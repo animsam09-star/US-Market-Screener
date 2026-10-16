@@ -325,6 +325,7 @@ def _card(r: ThemeResult, rank: int) -> str:
      <em>· SEC 재무 {sp.get('n_companies', 0)}개사{cust_txt} · 살아있는 축 {r.coverage:.0f}%
      · 기각 {r.n_rejected}개</em></p>
   <p class="verdict-line"><span class="vd {vcls}">{_e(vtag)}</span>{_e(vtext)}</p>
+  {_early_html(r)}
   {_theme_answer(r, vtag)}
   {_flow_analysis(r, vtag)}
   {inc_line}
@@ -663,6 +664,110 @@ def _ym(k: str) -> str:
 
 def _mdiff(a: str, b: str) -> int:
     return (int(b[:4]) - int(a[:4])) * 12 + int(b[5:7]) - int(a[5:7])
+
+
+def _mvals(series: list) -> list[tuple[str, float]]:
+    return _monthly(series)
+
+
+def _early_signals(r: ThemeResult) -> list[tuple[str, str]]:
+    """방향이 바뀌는 순간 — [(이름, 설명)]. 판정과 무관, 검증 전 신호.
+
+    원칙: 틀려도 먼저 보여준다(사용자 지정). 대신 '수준'이 아니라 '꺾임'만
+    잡는다 — 이미 오래 좋은 상태는 신호가 아니다(그건 판정이 이미 본다).
+    """
+    out: list[tuple[str, str]] = []
+    S_ = r.series
+
+    po = _mvals(S_.get("ppi_out") or [])
+    if len(po) >= 7:
+        v = [x for _, x in po]
+        if v[-1] > v[-3] * 1.01 and v[-3] < v[-6]:
+            out.append(("판매가격 반등 시작",
+                        f"내리던 판매가격이 {_ym(po[-3][0])} 바닥에서 "
+                        f"{(v[-1] / v[-3] - 1) * 100:+.0f}% 돌아섰습니다"))
+    pi = _mvals(S_.get("ppi_in") or [])
+    if len(pi) >= 4:
+        v = [x for _, x in pi]
+        c3 = v[-1] / v[-4] - 1 if v[-4] else 0
+        if c3 <= -0.08:
+            out.append(("원가 급락",
+                        f"원가가 최근 3개월 {c3 * 100:.0f}% 내려 마진이 벌어질 여지"))
+    cu = _mvals(S_.get("cap_util") or [])
+    if len(cu) >= 24:
+        v = [x for _, x in cu]
+        hist = sorted(v[-120:])
+        pct = sum(1 for x in hist if x <= v[-1]) / len(hist)
+        low6 = min(v[-6:])
+        if pct <= 0.30 and v[-1] - low6 >= 1.0 and v[-1] >= v[-2]:
+            out.append(("가동률 바닥 탈출",
+                        f"가동률 {low6:.1f}% → {v[-1]:.1f}% (10년 하위 {pct * 100:.0f}%에서 반등)"))
+    iv, sh = _mvals(S_.get("inv") or []), _mvals(S_.get("ship") or [])
+    if len(iv) >= 6 and len(sh) >= 6:
+        sm = dict(sh)
+        ratio = [(k, x / sm[k]) for k, x in iv if sm.get(k)]
+        if len(ratio) >= 5:
+            rv = [x for _, x in ratio]
+            if rv[-1] < rv[-2] < rv[-3] < rv[-4] and rv[-1] <= rv[-4] * 0.97:
+                out.append(("재고 소진",
+                            f"재고/출하 비율이 3개월 연속 줄었습니다({rv[-4]:.2f} → {rv[-1]:.2f}개월분)"))
+    for key, nm, word in (("orders", "수주 반등", "신규 수주"), ("ip", "생산·활동 반등", "생산·활동량")):
+        mv = _mvals(S_.get(key) or [])
+        if len(mv) >= 9:
+            v = [x for _, x in mv]
+            a, b, c = sum(v[-3:]) / 3, sum(v[-6:-3]) / 3, sum(v[-9:-6]) / 3
+            if b and c and a > b * 1.02 and b <= c:
+                out.append((nm, f"{word} 최근 3개월 평균이 직전 3개월보다 "
+                                f"{(a / b - 1) * 100:+.0f}% — 줄던 흐름이 돌아섰습니다"))
+    rv = S_.get("rev_yoy") or []
+    if len(rv) >= 3:
+        a, b, c = rv[-1][1], rv[-2][1], rv[-3][1]
+        if a - b >= 2 and b <= c:
+            out.append(("매출 가속 전환",
+                        f"매출 증가율 {b:+.0f}% → {a:+.0f}% — 둔화하다 다시 빨라짐"))
+    px = [v for _, v in (S_.get("price_index") or []) if v is not None]
+    if len(px) >= 230:
+        ma = [sum(px[i - 199:i + 1]) / 200 for i in range(len(px) - 30, len(px))]
+        tail = px[-30:]
+        above_now = tail[-1] > ma[-1]
+        was_below = any(tail[i] < ma[i] for i in range(0, 20))
+        if above_now and was_below and tail[-1] >= ma[-1] * 1.01:
+            out.append(("주가 200일선 회복",
+                        f"그룹 주가가 최근 200일 평균선 위로 올라섰습니다"
+                        f"(평균 대비 {(tail[-1] / ma[-1] - 1) * 100:+.0f}%)"))
+    return out
+
+
+def _early_html(r: ThemeResult) -> str:
+    sig = _early_signals(r)
+    if not sig:
+        return ""
+    return ("<div class='early'><div class='early-h'>초기 신호 "
+            f"<b>{len(sig)}</b><span>아직 검증 안 된, 방향이 바뀌는 순간 — 틀릴 수 있지만 먼저 보이는 것</span></div><ul>"
+            + "".join(f"<li><b>{_e(n)}</b> {_e(d)}</li>" for n, d in sig) + "</ul></div>")
+
+
+def _early_board(ranked: list[ThemeResult]) -> str:
+    """한눈에 상단 — 판정과 무관하게 초기 신호가 켜진 테마."""
+    rows = []
+    for i, r in enumerate(ranked, 1):
+        sig = _early_signals(r)
+        if sig:
+            rows.append((len(sig), r.catalyst_score or 0, i, r, sig))
+    if not rows:
+        return ("<section class='tv-card eb'><p class='nodata'>지금 방향이 바뀌는 "
+                "초기 신호가 켜진 테마가 없습니다.</p></section>")
+    rows.sort(key=lambda x: (-x[0], -x[1]))
+    items = []
+    for n, _c, i, r, sig in rows[:12]:
+        tag, cls, _t = _verdict(r)
+        items.append(
+            f"<a class='eb-row' href='#t{i}'><span class='eb-n'>{n}</span>"
+            f"<span class='eb-nm'><b>{_e(r.name)}</b><span class='tv-chip'>{_e(tag)}</span></span>"
+            f"<span class='eb-sig'>{_e(' · '.join(s_[0] for s_ in sig))}</span></a>")
+    return ("<section class='tv-card eb'><p class='eb-note'>판정과 상관없이, 데이터의 방향이 막 "
+            "바뀐 테마입니다. 검증되지 않은 초기 신호라 틀릴 수 있습니다 — 먼저 보고 판단하시라고 "
+            "올립니다. 숫자 = 켜진 신호 개수.</p>" + "".join(items) + "</section>")
 
 
 def _flow_analysis(r: ThemeResult, tag: str) -> str:
@@ -1416,6 +1521,20 @@ CSS = """
 .flow ul{margin:4px 0;padding-left:18px}.flow li{margin:3px 0;color:var(--text-secondary)}
 .flow-sig{margin-top:8px;padding-top:8px;border-top:1px dashed var(--border)}
 .flow-sig b{color:var(--text-primary)}
+.early{margin:8px 0;padding:10px 14px;border-radius:10px;border:1px solid #f0a13a;
+ background:rgba(240,161,58,.08);font-size:13.5px;line-height:1.6}
+.early-h{font-weight:800;color:#d9822b}.early-h b{margin:0 6px 0 2px}
+.early-h span{font-weight:500;font-size:12px;color:var(--muted)}
+.early ul{margin:4px 0 0;padding-left:18px}.early li b{color:var(--text-primary);margin-right:4px}
+.eb{padding:6px 18px 12px}.eb-note{font-size:13px;color:var(--muted);margin:8px 0}
+.eb-row{display:grid;grid-template-columns:34px minmax(180px,260px) 1fr;gap:12px;align-items:center;
+ padding:10px 6px;border-bottom:1px solid var(--tv-line);text-decoration:none;color:inherit;border-radius:8px}
+.eb-row:hover{background:var(--tv-hover)}
+.eb-n{width:28px;height:28px;border-radius:50%;background:#f0a13a;color:#fff;font-weight:800;
+ display:flex;align-items:center;justify-content:center}
+.eb-nm{display:flex;flex-direction:column;gap:3px}.eb-nm b{font-size:15px;color:var(--text-primary)}
+.eb-sig{font-size:14px;color:var(--text-secondary)}
+@media (max-width:760px){.eb-row{grid-template-columns:34px 1fr}.eb-sig{grid-column:2}}
 /* ---- TradingView 톤: 검은 바탕·얇은 테두리·초록/빨강 등락 ---- */
 .viz-root{--tv-up:#089981;--tv-dn:#f23645;--tv-link:#2962ff;--tv-card:#ffffff;
  --tv-line:#e0e3eb;--tv-hover:#f0f3fa;--tv-chip:#f0f3fa}
@@ -1969,6 +2088,8 @@ def build_html(results: list[ThemeResult], *, benchmark: str = "SPY") -> str:
 </section>
 {_tv_theme_list(ranked, _pick_numbers(ranked))}
 </div>
+<h2 class="tv-h">먼저 보이는 가능성</h2>
+{_early_board(ranked)}
 <h2 class="tv-h">추천 종목</h2>
 {_tv_pick_cards(ranked)}
 <div class="tv-g2">
