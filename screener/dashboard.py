@@ -1490,12 +1490,12 @@ CSS = """
  .hero-sc .scatter{width:100%;max-width:760px;height:auto;display:block;margin:0 auto}
  .prio-l{columns:2;column-gap:30px}
  .prio-l li{break-inside:avoid}
- .cardcols{columns:2;column-gap:28px}
- .cardcols .card{break-inside:avoid;margin-top:0;margin-bottom:18px}
+ .cardcols{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:18px 28px;align-items:start}
+ .cardcols .card{margin:0}
 }
 @media (min-width:2200px){
  .hero{grid-template-columns:minmax(0,2fr) minmax(0,1fr)}
- .cardcols{columns:3;column-gap:30px}
+ .cardcols{grid-template-columns:repeat(3,minmax(0,1fr));gap:18px 30px}
  .prio-l{columns:3}
 }
 .tabbar{position:sticky;top:0;z-index:30;display:flex;gap:6px;padding:10px 0 8px;
