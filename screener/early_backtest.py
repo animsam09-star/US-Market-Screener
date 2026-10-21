@@ -74,6 +74,7 @@ def load_ctx(themes: list, bench_tkr: str) -> Ctx:
     tick: set[str] = set()
     for th in themes:
         tick |= {t.upper() for t in th["tickers"]}
+        tick |= {t.upper() for t in ((th.get("customers") or {}).get("tickers") or [])}
     print(f"주가·재무 수집 {len(tick)}종목…", flush=True)
     for t in sorted(tick):
         try:
@@ -119,6 +120,11 @@ def theme_asof(theme: dict, when: date, ctx: Ctx) -> ThemeResult:
     ser["lead"] = lead
     tk = set(tickers)
     ser["insider"] = window([b for b in INSIDER if b["ticker"] in tk], when)
+    ct = [t.upper() for t in ((theme.get("customers") or {}).get("tickers") or [])]
+    if ct:
+        cg, _ = aggregate_financials(ct, ctx.tmap, _cut(ctx.prices, ct, when),
+                                     asof=when.isoformat(), percache=ctx.percache)
+        ser["cust_capex"] = cg.get("capex_yoy_series", [])
     ser["price_index"] = (px.get("index") or [])[-500:]
     ser["rev_yoy"] = group.get("rev_yoy_series", [])
     r.series = ser

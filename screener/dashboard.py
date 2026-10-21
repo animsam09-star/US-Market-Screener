@@ -802,6 +802,15 @@ def _early_signals(r: ThemeResult) -> list[tuple[str, str]]:
                             f"다음 회계연도 이익 추정치가 30일 전보다 {up}/{len(ch)}개 종목에서 "
                             f"올랐습니다(가운데값 {med * 100:+.0f}%)"
                             + (" — 그 전 두 달은 제자리·하향이었다가 돌아섬" if turn else "")))
+    # 고객 설비투자 가속 — 고객사(themes.yaml customers.tickers) TTM 설비투자 증가율이
+    # 2분기 전보다 5%p 넘게 빨라졌고 지금 +10% 이상(늘리기 시작한 순간)
+    cc = S_.get("cust_capex") or []
+    if len(cc) >= 3:
+        a, b = cc[-1][1], cc[-3][1]
+        if a >= 10 and a - b >= 5:
+            out.append(("고객 설비투자 가속",
+                        f"고객사 설비투자 증가율 {b:+.0f}% → {a:+.0f}%(최근 1년 합계, 2분기 사이) — "
+                        "고객이 돈을 더 쓰기 시작했습니다"))
     px = [v for _, v in (S_.get("price_index") or []) if v is not None]
     if len(px) >= 230:
         ma = [sum(px[i - 199:i + 1]) / 200 for i in range(len(px) - 30, len(px))]

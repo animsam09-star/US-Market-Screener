@@ -299,6 +299,12 @@ def aggregate_financials(tickers: list[str], tmap: dict[str, int],
         ]
 
     cx, dp = dict(ttm(capex)), dict(ttm(dep))
+    # 설비투자 TTM 증가율 — 고객군에 쓰면 '고객이 돈을 더 쓰기 시작했나'(초기 신호)
+    agg["capex_yoy_series"] = [
+        (k, 100.0 * (v / cx[(k[0] - 1, k[1])] - 1.0))
+        for k, v in sorted(cx.items())
+        if (k[0] - 1, k[1]) in cx and cx[(k[0] - 1, k[1])] > 0
+    ]
     ratios = [(k, cx[k] / dp[k]) for k in sorted(set(cx) & set(dp)) if dp[k]]
     if ratios:
         agg["capex_dep_now"] = ratios[-1][1]
@@ -617,6 +623,7 @@ def evaluate_theme(theme: dict, tmap: dict, bench: list, series_cache: dict) -> 
         "est": _est,
         "est_rev": _rev,
         "eps_trend": _ytr,
+        "cust_capex": cust_fin.get("capex_yoy_series", []),
         # 시장(벤치마크) 200일선 대비 % — 시장 약세 중 켜진 실물 신호가 과거 가장 강했다
         "mkt_ma200": ((bench[-1][1] / (sum(v for _, v in bench[-200:]) / 200) - 1) * 100
                       if bench and len(bench) >= 200 else None),
