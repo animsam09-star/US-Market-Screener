@@ -1503,6 +1503,23 @@ def f55_zoom_and_coinflip():
     h2 = db._early_board([r])
     check("F55 시장 약세 중 실물 신호는 위로", "eb-more" not in h2 and "W" in h2, h2[:300])
 
+    # 예약 실행 시간 초과(10-17·20·21) — Finnhub 429 대기 폭주 방지·추가 자료 시간 상한
+    import screener.net as net
+    check("F55 Finnhub 1초 간격·재시도 1회", net._MIN_INTERVAL.get("finnhub.io", 0) >= 1.0
+          and net._HOST_PROFILE.get("finnhub.io", (9,))[0] == 1, "")
+    old_b, old_t = net.EXTRAS_BUDGET_S, dict(net._EXTRAS)
+    try:
+        net.EXTRAS_BUDGET_S = 0.0
+        net._EXTRAS.update({"t0": None, "skipped": 0})
+        net.extras_ok()
+        import time as _t
+        _t.sleep(0.01)
+        check("F55 추가 자료 시간 상한 넘으면 새로 안 받음", net.extras_ok() is False
+              and net._EXTRAS["skipped"] >= 1, str(net._EXTRAS))
+    finally:
+        net.EXTRAS_BUDGET_S = old_b
+        net._EXTRAS.clear(); net._EXTRAS.update(old_t)
+
 
 # ---------------------------------------------------------------- F54
 def f54_signal_strength_tiers():

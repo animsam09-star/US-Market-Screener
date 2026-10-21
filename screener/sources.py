@@ -432,11 +432,10 @@ def finnhub_reco(ticker: str) -> list[dict]:
     url = (f"https://finnhub.io/api/v1/stock/recommendation"
            f"?symbol={urllib.parse.quote(ticker)}&token={k}")
     if not is_fresh(url, 24 * 8):
-        if _RECO_BUDGET["left"] <= 0:
+        from .net import extras_ok
+        if _RECO_BUDGET["left"] <= 0 or not extras_ok():
             return []
         _RECO_BUDGET["left"] -= 1
-        import time as _t
-        _t.sleep(1.1)
     try:
         out = _parse_reco(fetch_json(url, ttl_hours=24 * 8, retries=1))
         RECO_STAT["ok" if out else "empty"] += 1
@@ -482,11 +481,10 @@ def finnhub_insider(ticker: str, since: str) -> list[dict]:
     url = (f"https://finnhub.io/api/v1/stock/insider-transactions"
            f"?symbol={urllib.parse.quote(ticker)}&from={since}&token={k}")
     if not is_fresh(url, 72):
-        if _INS_BUDGET["left"] <= 0:
+        from .net import extras_ok
+        if _INS_BUDGET["left"] <= 0 or not extras_ok():
             return []
         _INS_BUDGET["left"] -= 1
-        import time as _t
-        _t.sleep(1.1)
     try:
         out = _parse_fh_insider(fetch_json(url, ttl_hours=72, retries=1), ticker, since)
         FH_INS_STAT["ok" if out else "empty"] += 1
@@ -572,6 +570,9 @@ def yahoo_eps_trend(ticker: str) -> dict | None:
             pass
     if YH_STAT["err"] >= 5 and not YH_STAT["ok"]:
         return None                   # 이번 실행에선 막힌 것으로 판정
+    from .net import extras_ok
+    if not extras_ok():
+        return None
     s, crumb = _yh_session()
     if not crumb:
         YH_STAT["err"] += 1
@@ -603,7 +604,7 @@ def finnhub_surprise(ticker: str) -> dict | None:
     url = (f"https://finnhub.io/api/v1/stock/earnings"
            f"?symbol={urllib.parse.quote(ticker)}&token={k}")
     try:
-        return _parse_finnhub(fetch_json(url, ttl_hours=24))
+        return _parse_finnhub(fetch_json(url, ttl_hours=72))
     except FetchError:
         return None
 

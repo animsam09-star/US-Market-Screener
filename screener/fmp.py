@@ -48,7 +48,8 @@ def _get(path: str, params: dict, kind: str):
     if STAT.get(f"{kind}_off"):
         return None                       # 이번 실행에서 막힌 것으로 판정 — 하루 한도를 아낀다
     if not is_fresh(url, TTL_H):
-        if BUDGET["left"] <= 0:
+        from .net import extras_ok
+        if BUDGET["left"] <= 0 or not extras_ok():
             STAT["skipped"] += 1
             return None
         BUDGET["left"] -= 1

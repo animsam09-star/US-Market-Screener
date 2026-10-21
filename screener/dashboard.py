@@ -2466,7 +2466,9 @@ def _diag_line() -> str:
         from .insider import RUN_BUDGET, STAT
         from .fmp import STAT as FS
         from .sources import FH_INS_STAT, RECO_STAT, YH_STAT
-        t = (f"form4 docs={STAT['docs']} doc_err={STAT['doc_err']} subs_err={STAT['subs_err']} "
+        from .net import _EXTRAS, host_status
+        t = (f"extras_skip={_EXTRAS['skipped']} dead={','.join(host_status()) or '-'} | "
+             f"form4 docs={STAT['docs']} doc_err={STAT['doc_err']} subs_err={STAT['subs_err']} "
              f"sec_blocked={STAT['sec_blocked']} fh_ins ok={FH_INS_STAT['ok']} "
              f"empty={FH_INS_STAT['empty']} err={FH_INS_STAT['err']} {FH_INS_STAT['why']} | "
              f"deferred={RUN_BUDGET.skipped} {STAT['err']} | reco key={RECO_STAT['key']} "

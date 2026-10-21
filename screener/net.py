@@ -38,7 +38,9 @@ _last_call: dict[str, float] = {}
 _MIN_INTERVAL = {"data.sec.gov": 0.12, "www.sec.gov": 0.12, "efts.sec.gov": 0.15,
                  # 러너(단일 IP 버스트)에서 FRED 가 일시 차단을 걸었다 — run 39·41 실측.
                  # 러너는 캐시가 안 쌓여 매 실행 100여 시리즈를 새로 받는다.
-                 "fred.stlouisfed.org": 0.6}
+                 "fred.stlouisfed.org": 0.6,
+                 # 무료 한도 분당 60회 — 실적·의견·내부자 호출을 합쳐 1초 간격(10-21 시간 초과 실측)
+                 "finnhub.io": 1.05}
 
 # 호스트별 정책: (재시도 횟수, 백오프 배수(초), 차단 판정 임계)
 # FRED 에 끈질긴 재시도(5회×백오프)를 걸었더니 스냅샷 폴백과 겹쳐 실패 1건당
@@ -46,7 +48,25 @@ _MIN_INTERVAL = {"data.sec.gov": 0.12, "www.sec.gov": 0.12, "efts.sec.gov": 0.15
 # 스냅샷이 있는 지금은 빨리 포기하고 폴백하는 것이 맞다.
 _HOST_PROFILE = {
     "fred.stlouisfed.org": (2, 1.0, 4),
+    # 429 를 종목마다 4·8초 기다리며 재시도하면 실행이 8분을 넘긴다 — 한 번만, 6연속 실패면 차단
+    "finnhub.io": (1, 1.0, 6),
 }
+
+
+# 초기 신호용 추가 자료(애널리스트 의견·내부자 거래·추정치)의 실행당 시간 상한.
+# 판정 점수와 무관한 자료라 늦으면 버린다 — 넘으면 캐시만 쓴다.
+EXTRAS_BUDGET_S = float(os.environ.get("SCREENER_EXTRAS_BUDGET", "240"))
+_EXTRAS = {"t0": None, "skipped": 0}
+
+
+def extras_ok() -> bool:
+    """새로 받아도 되면 True. 처음 부른 시점부터 EXTRAS_BUDGET_S 초까지."""
+    if _EXTRAS["t0"] is None:
+        _EXTRAS["t0"] = time.time()
+    if time.time() - _EXTRAS["t0"] <= EXTRAS_BUDGET_S:
+        return True
+    _EXTRAS["skipped"] += 1
+    return False
 
 
 class FetchError(RuntimeError):
