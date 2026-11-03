@@ -1497,8 +1497,8 @@ def f55_zoom_and_coinflip():
     r = ThemeResult(name="W", thesis="", tickers=["AA"])
     r.series = {"orders": mser([100, 99, 98, 97, 96, 95, 99, 102, 104]), "mkt_ma200": 4.0}
     h = db._early_board([r])
-    check("F55 반반 수준은 접기 + 의미 있는 조건 없음 안내",
-          "eb-more" in h and "반반 수준" in h and "없습니다" in h, h[:300])
+    check("F55 반반 수준 테마 목록은 안 보여 줌 + 의미 있는 조건 없음 안내",
+          "eb-more" not in h and "반반 수준 신호가 켜진" not in h and "없습니다" in h, h[:300])
     r.series["mkt_ma200"] = -3.0
     h2 = db._early_board([r])
     check("F55 시장 약세 중 실물 신호는 위로", "eb-more" not in h2 and "W" in h2, h2[:300])
@@ -1553,7 +1553,7 @@ def f54_signal_strength_tiers():
     q = ThemeResult(name="U", thesis="", tickers=["AA"])
     q.series = {"ppi_in": mser([100, 100, 100, 100, 100, 100, 100, 95, 90, 85]), "mkt_ma200": 1.0}
     h = db._early_html(q)
-    check("F54 참고 신호만 있으면 단계 없음 안내", "실물 신호 없음" in h and "참고" in h, h[:300])
+    check("F54 반반 신호만 있으면 근거 아님 안내", "판단 근거로 보지 않습니다" in h and "이긴 비율" not in h, h[:300])
     check("F54 단계 순서 = 과거 성적 순", TIERS[0] == "실물 2개 이상" and TIERS[1] == "시장 약세 중 실물 신호", "")
 
 
@@ -1727,10 +1727,23 @@ def f52_early_record_and_new_data():
         db.EARLY_STATS.clear()
         db.EARLY_STATS.update({"base": {"fwd12": {"n": 900, "mean": 1.0, "hit": 48.0}},
                                "period": ["2010-01-31", "2026-03-31"],
-                               "signals": {"원가 급락": {"n_events": 23, "grade": "조금 나음",
-                                                     "fwd12": {"n": 23, "mean": 4.2, "hit": 61.0}}}})
+                               "signals": {"원가 급락": {"n_events": 43, "grade": "조금 나음",
+                                                     "fwd12": {"n": 43, "mean": 4.2, "hit": 61.0},
+                                                     "early": {"n": 20, "hit": 58.0},
+                                                     "late": {"n": 23, "hit": 64.0}},
+                                           "재고 소진": {"n_events": 50, "grade": "평소와 비슷",
+                                                     "fwd12": {"n": 50, "mean": 0.2, "hit": 52.0}},
+                                           "수주 반등": {"n_events": 50, "grade": "평소와 비슷",
+                                                     "fwd12": {"n": 50, "mean": -3.0, "hit": 36.0},
+                                                     "early": {"n": 25, "hit": 38.0},
+                                                     "late": {"n": 25, "hit": 34.0}}}})
         h = db._early_rec("원가 급락")
-        check("F52 적중 기록 문구", "과거 23번 켜짐" in h and "61%" in h and "평소 48%" in h, h)
+        check("F52 적중 기록 문구", "과거 43번 켜짐" in h and "61%" in h and "평소 48%" in h, h)
+        # 2026-11-03 사용자: "50%대면 반반 — 아예 높던가 아예 낮던가" → 반반은 숫자 자체를 안 보여 줌
+        check("F56 반반(52%) 신호는 성적 문구 없음", db._early_rec("재고 소진") == "", db._early_rec("재고 소진"))
+        check("F56 뚜렷이 낮은 신호는 '반대로 감'", "반대로 감" in db._early_rec("수주 반등"),
+              db._early_rec("수주 반등"))
+        check("F56 표본 30 미만은 숫자 안 보여 줌", db._clear_side({"hit": 70}, None, None, 20) is None, "")
         check("F52 기록 없는 신호는 정직하게", "과거 기록 없음" in db._early_rec("내부자 매수 집중"), "")
     finally:
         db.load_history = old_lh

@@ -872,9 +872,8 @@ def _tier_rec(t: str | None) -> str:
     if not a or not base:
         return ""
     both = (f" · 2019년 전 {e['hit']:.0f}% / 후 {l_['hit']:.0f}%" if e and l_ else "")
-    if t not in _STRONG:
-        return (f"<span class='coin'>반반 수준</span> 과거 이런 경우 시장을 이긴 비율 {a['hit']:.0f}%"
-                f"(평소 {base['hit']:.0f}%) — 동전 던지기에 가까워 참고만 하세요")
+    if t not in _STRONG or _tier_side(t) != "hi":
+        return ""
     big = (f" · 시장보다 20%p 넘게 더 오른 비율 <b>{a['big']:.0f}%</b>(평소 {base.get('big', 0):.0f}%)"
            if a.get("big") is not None else "")
     return (f"과거 이런 경우 1년 뒤 시장을 이긴 비율 <b>{a['hit']:.0f}%</b>(평소 {base['hit']:.0f}%) · "
@@ -891,6 +890,37 @@ def _early_stat(name: str) -> dict | None:
     return (EARLY_STATS.get("signals") or {}).get(name)
 
 
+# 화면에 성적을 보여 줄 만한가 — 50%대는 반반이라 숫자를 보여도 쓸모가 없다(사용자 2026-11-03:
+# "이긴 비율이 50%대면 반반이잖아. 차라리 아예 높던가, 아예 낮던가 해야지").
+# 'hi' = 전체 60%↑이고 두 기간(2019 전·후) 모두 55%↑, 'lo' = 전체 40%↓이고 두 기간 모두 45%↓.
+# 그 사이는 None — 숫자·이름을 화면에서 뺀다.
+SIG_HI, SIG_HI_EACH, SIG_LO, SIG_LO_EACH, SIG_MIN_N = 60.0, 55.0, 40.0, 45.0, 30
+
+
+def _clear_side(a: dict | None, e: dict | None, l_: dict | None, n: int) -> str | None:
+    if not a or n < SIG_MIN_N or a.get("hit") is None:
+        return None
+    each = [x["hit"] for x in (e, l_) if x and x.get("hit") is not None and x.get("n", 0) >= 8]
+    if a["hit"] >= SIG_HI and all(h >= SIG_HI_EACH for h in each):
+        return "hi"
+    if a["hit"] <= SIG_LO and all(h <= SIG_LO_EACH for h in each):
+        return "lo"
+    return None
+
+
+def _sig_side(name: str) -> str | None:
+    s_ = _early_stat(name)
+    if not s_ or not s_.get("fwd12"):
+        return None
+    return _clear_side(s_["fwd12"], s_.get("early"), s_.get("late"), s_.get("n_events", 0))
+
+
+def _tier_side(t: str | None) -> str | None:
+    d = (EARLY_STATS.get("tiers") or {}).get(t or "") or {}
+    a = d.get("all")
+    return _clear_side(a, d.get("early"), d.get("late"), (a or {}).get("n", 0))
+
+
 def _early_grade(name: str) -> str:
     s_ = _early_stat(name)
     return s_["grade"] if s_ and s_.get("fwd12") else "기록 없음"
@@ -903,12 +933,20 @@ def _early_rec(name: str) -> str:
     if not s_ or not s_.get("fwd12") or not base:
         return ("<span class='er er-none'>과거 기록 없음 — 오늘부터 쌓습니다</span>")
     f = s_["fwd12"]
-    g = s_["grade"]
-    lab = _GRADE_LABEL.get(g, g)
-    return (f"<span class='er {_GRADE_CLS.get(g, 'er-few')}'>{_e(lab)}</span>"
-            f"<span class='er-t'>과거 {s_['n_events']}번 켜짐 → 1년 뒤 시장을 이긴 비율 "
+    side = _sig_side(name)
+    if not side:
+        return ""
+    e, l_ = s_.get("early") or {}, s_.get("late") or {}
+    both = (f" · 2019년 전 {e['hit']:.0f}% / 후 {l_['hit']:.0f}%"
+            if e.get("hit") is not None and l_.get("hit") is not None else "")
+    if side == "hi":
+        lab, cls, what = "잘 맞았음", "er-good", "시장을 이긴 비율"
+    else:
+        lab, cls, what = "반대로 감", "er-bad", "시장을 이긴 비율이 오히려 낮음"
+    return (f"<span class='er {cls}'>{lab}</span>"
+            f"<span class='er-t'>과거 {s_['n_events']}번 켜짐 → 1년 뒤 {what} "
             f"<b>{f['hit']:.0f}%</b> (평소 {base['hit']:.0f}%), 중간값 {f.get('median', 0):+.0f}%p "
-            f"(평소 {base.get('median', 0):+.0f}%p)</span>")
+            f"(평소 {base.get('median', 0):+.0f}%p){both}</span>")
 
 
 def _early_last(theme: str, name: str) -> str:
@@ -985,8 +1023,11 @@ def _early_html(r: ThemeResult) -> str:
     if not sig:
         return ""
     stg = _strength(r)
-    lis = []
+    lis, coin = [], []
     for n, d in sig:
+        if not _sig_side(n):
+            coin.append(n)          # 과거 성적 반반 — 숫자·설명 없이 이름만 접어 둔다
+            continue
         age, _new = _early_age(r.name, n)
         kind = ("<span class='ek ek-f'>실물</span>" if n in _FUND
                 else "<span class='ek'>참고</span>")
@@ -995,14 +1036,20 @@ def _early_html(r: ThemeResult) -> str:
         lis.append(f"<li><div class='el-h'>{kind}<b>{_e(n)}</b>{age}</div>"
                    f"<div class='el-d'>{_e(d)}</div>"
                    f"<div class='el-r'>{_early_rec(n)}{_early_last(r.name, n)}</div></li>")
+    trec = _tier_rec(stg["tier"])
+    if not lis and not trec:
+        if not coin:
+            return ""
+        return ("<div class='early early-coin'>과거 성적이 반반(50%대)인 신호만 켜져 있어 판단 근거로 "
+                "보지 않습니다: " + " · ".join(_e(n) for n in coin) + "</div>")
     return ("<div class='early'><div class='early-h'>초기 신호 "
-            f"<b>{len(sig)}</b><span>방향이 바뀌는 순간 — 틀릴 수 있지만 먼저 보이는 것. "
+            f"<b>{len(lis)}</b><span>과거에 뚜렷이 잘 맞았거나 뚜렷이 반대로 간 신호만 — "
             "옆 숫자는 과거에 같은 신호가 켜졌을 때의 성적</span></div>"
-            + (f"<div class='es-tier'><b>{_e(stg['tier'])}</b> {_tier_rec(stg['tier'])}</div>"
-               if stg["tier"] else
-               "<div class='es-tier es-tier-ref'>실물 신호 없음 — 아래는 참고 신호(과거 예측력이 "
-               "평소 수준이거나 아직 기록이 없음)</div>")
-            + "<ul>" + "".join(lis) + "</ul></div>")
+            + (f"<div class='es-tier'><b>{_e(stg['tier'])}</b> {trec}</div>" if trec else "")
+            + ("<ul>" + "".join(lis) + "</ul>" if lis else "")
+            + ("<div class='early-coin'>그 밖에 켜진 신호(과거 성적 반반이라 판단 근거 아님): "
+               + " · ".join(_e(n) for n in coin) + "</div>" if coin else "")
+            + "</div>")
 
 
 def _early_log_html() -> str:
@@ -1011,11 +1058,11 @@ def _early_log_html() -> str:
         return ""
     from datetime import date as _d, timedelta as _td
     lo = (_d.fromisoformat(tl["today"]) - _td(days=30)).isoformat()
-    rows = [x for x in tl["log"] if x[0] >= lo][-14:][::-1]
+    # 반반(50%대) 신호의 켜짐·꺼짐은 판단에 쓸모가 없어 뺀다
+    rows = [x for x in tl["log"] if x[0] >= lo and _sig_side(x[2])][-14:][::-1]
     if not rows:
-        return ("<p class='eb-log-empty'>최근 신호 변화: 아직 없음 — "
-                f"{int(tl['base'][5:7])}/{int(tl['base'][8:10])}부터 기록 중이며, "
-                "새로 켜지거나 꺼진 신호가 생기면 여기 날짜순으로 쌓입니다.</p>")
+        return ("<p class='eb-log-empty'>최근 30일 동안 과거 성적이 뚜렷한 신호는 새로 켜지거나 "
+                "꺼진 것이 없습니다(반반 수준 신호의 변화는 표시하지 않음).</p>")
     lis = "".join(
         f"<li><span class='lg-d'>{int(d[5:7])}/{int(d[8:10])}</span>"
         f"<span class='lg-{'on' if k == 'on' else 'off'}'>{'켜짐' if k == 'on' else '꺼짐'}</span>"
@@ -1029,10 +1076,10 @@ def _early_row(i: int, r: ThemeResult, sig: list, stg: dict) -> str:
     chips = ""
     for nm, _ in sig:
         nb = NEW_B if _early_age(r.name, nm)[1] else ""
-        gc = _GRADE_CLS.get(_early_grade(nm), "er-none")
+        gc = {"hi": "er-good", "lo": "er-bad"}.get(_sig_side(nm) or "", "er-none")
         ref = "" if nm in _FUND else " es-ref"
         chips += f"<span class='es {gc}{ref}'>{nb}{_e(nm)}</span>"
-    if stg["tier"]:
+    if stg["tier"] and _tier_rec(stg["tier"]):
         chips = (f"<span class='et et-{_TIERS.index(stg['tier'])}'>{_e(stg['tier'])}</span>"
                  + chips)
     return (f"<a class='eb-row' href='#t{i}'><span class='eb-n{'' if n else ' eb-n0'}'>{n}</span>"
@@ -1078,7 +1125,7 @@ def _early_board(ranked: list[ThemeResult]) -> str:
         head = ("<div class='eb-strong-h'><p class='eb-note'><b>과거에 시장을 뚜렷이 더 이긴 조건은 "
                 "두 가지뿐입니다.</b> 아무 때나 골랐을 때(평소)는 1년 뒤 시장을 이긴 비율 "
                 f"{base['hit']:.0f}% · 중간값 {base.get('median', 0):+.0f}%p{bbig} — 50%대는 사실상 "
-                "동전 던지기라 따로 접어 두었습니다.</p><ul class='eb-sl'>" + lines + "</ul></div>")
+                "동전 던지기라 화면에서 뺐습니다.</p><ul class='eb-sl'>" + lines + "</ul></div>")
     mline = ""
     if mkt_now is not None:
         if mkt_now < 0:
@@ -1093,12 +1140,16 @@ def _early_board(ranked: list[ThemeResult]) -> str:
         main = ("<p class='eb-none'>지금 이 두 조건에 해당하는 테마는 <b>없습니다</b>. "
                 "실물 신호가 2개 이상 겹치거나, 시장이 200일선 아래로 내려간 상태에서 실물 신호가 켜지면 "
                 "여기 맨 위에 뜹니다.</p>")
+    # 반반 수준(과거 이긴 비율 50%대) 테마 목록은 판단에 쓸모가 없어 보여 주지 않는다(2026-11-03).
+    # 다만 하나라도 뚜렷한 신호(과거 성적이 뚜렷이 높거나 낮은 것)가 켜진 테마는 따로 보여 준다.
     more = ""
-    if weak:
-        rows = "".join(_early_row(i, r, sig, stg) for _k, i, r, sig, stg in weak[:20])
-        more = ("<details class='eb-more'><summary>반반 수준 신호가 켜진 테마 "
-                f"{len(weak)}개 — 과거 이긴 비율 50%대(동전 던지기에 가까움) · 참고만</summary>"
-                + rows + "</details>")
+    clear = [(k, i, r, [x for x in sig if _sig_side(x[0])], stg)
+             for k, i, r, sig, stg in weak]
+    clear = [x for x in clear if x[3]]
+    if clear:
+        rows = "".join(_early_row(i, r, sig, stg) for _k, i, r, sig, stg in clear[:12])
+        more = ("<div class='eb-clear'><h3>과거 성적이 뚜렷한 신호가 켜진 테마</h3>"
+                + rows + "</div>")
     return ("<section class='tv-card eb'>" + head + mline + main + more
             + _early_log_html() + "</section>")
 
@@ -1905,6 +1956,10 @@ CSS = """
 .eb-sl b{color:var(--text-primary)}
 .eb-none{font-size:14px;margin:8px 0 10px;padding:10px 12px;border:1px dashed var(--tv-line);border-radius:8px;
  color:var(--text-secondary)}
+.er.er-bad{color:#d9534f;border-color:#d9534f}.es.er-bad{border-color:#d9534f;background:rgba(217,83,79,.12)}
+.early-coin{font-size:12.5px;color:var(--muted);margin-top:6px}
+.eb-clear{margin-top:10px;border-top:1px solid var(--tv-line);padding-top:8px}
+.eb-clear h3{font-size:13.5px;color:var(--muted);margin:2px 0 6px;font-weight:600}
 .eb-more{margin-top:10px;border-top:1px solid var(--tv-line);padding-top:8px}
 .eb-more summary{cursor:pointer;font-size:13.5px;color:var(--muted);padding:4px 0}
 .eb-more .eb-row{opacity:.75}
