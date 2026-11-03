@@ -794,7 +794,7 @@ def f47_dashboard_tabs_and_honesty():
     old_vs, old_bt = db.VERDICT_STATS, db.BT_RECORDS
     try:
         db.VERDICT_STATS = {"이유 약함": {"n": 75, "mean": 8.8, "median": -3.2,
-                                          "hit": 45.0},
+                                          "hit": 35.0},
                             "볼 만함": {"n": 13, "mean": 38.9, "median": 33.7,
                                         "hit": 85.0}}
         db.BT_RECORDS = (
@@ -808,9 +808,15 @@ def f47_dashboard_tabs_and_honesty():
         r = ThemeResult(name="석탄류", thesis="", tickers=["A"])
         r.catalyst = [Signal("A7", "⑦ 마진", 70, "ok", "d")]
         line = db._history_line(r, "이유 약함")
-        check("F47 전적: 승률", "승률 45%" in line, line[:120])
+        check("F47 전적: 승률", "승률 35%" in line, line[:120])
         check("F47 전적: 예외 명시", "예외: 2021-12 정유가" in line, line[:200])
         check("F47 전적: 조건부 '~에 불과'", "에 불과합니다" in line, line[-120:])
+        # 2026-11-03: 승률 50%대(반반) 판정은 숫자·예외 대신 '반반' 한 줄
+        db.VERDICT_STATS["이유 약함"]["hit"] = 52.0
+        line2 = db._history_line(r, "이유 약함")
+        check("F56 반반 판정은 승률 숫자 없이 안내", "반반" in line2 and "승률 52%" not in line2
+              and "예외" not in line2, line2[:200])
+        check("F56 반반 판정은 우선순위 머리 숫자 없음", db._vstat_span("이유 약함") == "", "")
 
         # 고지 배너는 폐지("이건 그냥 없애") — 대신 카드마다 판단 문단:
         # "정유가 계속 좋을 거 같은데 아닌가?"에 대한 도구의 답.
@@ -1744,6 +1750,22 @@ def f52_early_record_and_new_data():
         check("F56 뚜렷이 낮은 신호는 '반대로 감'", "반대로 감" in db._early_rec("수주 반등"),
               db._early_rec("수주 반등"))
         check("F56 표본 30 미만은 숫자 안 보여 줌", db._clear_side({"hit": 70}, None, None, 20) is None, "")
+        # 이긴 비율은 반반이어도 '크게 오른 비율'·'크게 깨진 비율'이 두 기간 모두 뚜렷하면 보여 준다
+        bb = {"fwd12": {"hit": 52.0, "big": 25.0, "bad": 19.0}, "early": {"hit": 51.0, "big": 20.0, "bad": 18.0},
+              "late": {"hit": 54.0, "big": 31.0, "bad": 20.0}}
+        big_s = {"n_events": 76, "fwd12": {"hit": 53.0, "big": 39.0, "bad": 23.0},
+                 "early": {"n": 35, "hit": 57.0, "big": 40.0, "bad": 23.0},
+                 "late": {"n": 35, "hit": 49.0, "big": 37.0, "bad": 23.0}}
+        check("F56 급등형(크게 오른 비율 두 기간 모두 높음)", db._sig_traits(big_s, bb) == ["big"],
+              str(db._sig_traits(big_s, bb)))
+        safe_s = {"n_events": 93, "fwd12": {"hit": 58.0, "big": 28.0, "bad": 11.0},
+                  "early": {"n": 57, "hit": 44.0, "big": 12.0, "bad": 15.8},
+                  "late": {"n": 35, "hit": 80.0, "big": 54.0, "bad": 2.9}}
+        check("F56 방어형(크게 깨진 비율 두 기간 모두 낮음)", db._sig_traits(safe_s, bb) == ["safe"],
+              str(db._sig_traits(safe_s, bb)))
+        one = dict(big_s, late={"n": 35, "hit": 49.0, "big": 30.0, "bad": 23.0})
+        check("F56 한 기간만 뚜렷하면 급등형 아님", "big" not in db._sig_traits(one, bb),
+              str(db._sig_traits(one, bb)))
         check("F52 기록 없는 신호는 정직하게", "과거 기록 없음" in db._early_rec("내부자 매수 집중"), "")
     finally:
         db.load_history = old_lh

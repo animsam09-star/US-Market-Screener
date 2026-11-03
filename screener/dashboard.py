@@ -415,9 +415,14 @@ def _bt_stats(rs: list) -> dict | None:
             "hit": 100.0 * sum(1 for y in v if y > 0) / len(v)}
 
 
+def _verdict_clear(s: dict | None) -> bool:
+    """판정의 과거 승률이 뚜렷한가(60%↑ 또는 40%↓). 50%대는 반반 — 숫자를 보여 주지 않는다."""
+    return bool(s) and s.get("hit") is not None and (s["hit"] >= SIG_HI or s["hit"] <= SIG_LO)
+
+
 def _vstat_span(tag: str) -> str:
     s = VERDICT_STATS.get(tag)
-    if not s:
+    if not s or not _verdict_clear(s):
         return ""
     return (f'<span class="prio-stat">과거 {s["n"]}번 · 12M 평균 {s["mean"]:+.1f}%p '
             f'· 승률 {s["hit"]:.0f}%</span>')
@@ -430,6 +435,19 @@ def _history_bits(r: ThemeResult, tag: str) -> list[str]:
     if not base or not recs:
         return []
     pos = tag in _POSITIVE_TAGS
+    if not _verdict_clear(base):
+        # 반반 판정 — 승률·예외 사례는 판단에 쓸모가 없다. 조건을 좁혔을 때 뚜렷해지면 그것만 말한다.
+        parts = [f"'{tag}' 판정은 과거 성적이 반반(동전 던지기 수준)이라 이 판정만으로는 "
+                 "오를지 덜 오를지 말할 수 없습니다."]
+        if r.top_axes:
+            stable = r.top_axes[0].key in STABLE_AXES
+            st_ = _bt_stats([x for x in recs if (_rec_top1(x) in STABLE_AXES) == stable])
+            if st_ and st_["n"] >= 10 and _verdict_clear(st_):
+                cond = ("낙수·공급·병목처럼 예측력이 검증된 축" if stable
+                        else "시기 따라 예측력이 뒤집히는 축")
+                parts.append(f"다만 지금처럼 주도 촉매가 {cond}인 경우로 좁히면 승률이 "
+                             f"{st_['hit']:.0f}%({st_['n']}번)로 뚜렷해집니다.")
+        return parts
     parts = [f"과거 같은 판정 {base['n']}번 — 12개월 평균 {base['mean']:+.1f}%p, "
              f"승률 {base['hit']:.0f}%."]
 
@@ -908,11 +926,53 @@ def _clear_side(a: dict | None, e: dict | None, l_: dict | None, n: int) -> str 
     return None
 
 
-def _sig_side(name: str) -> str | None:
-    s_ = _early_stat(name)
-    if not s_ or not s_.get("fwd12"):
-        return None
-    return _clear_side(s_["fwd12"], s_.get("early"), s_.get("late"), s_.get("n_events", 0))
+# 이긴 비율만 보면 '맞으면 크게 오르는' 신호(가동률 바닥 탈출: 이긴 비율 53%인데 시장보다
+# 20%p 넘게 더 오른 비율이 두 기간 모두 평소의 1.2~2배)를 놓친다(사용자 2026-11-03 동의).
+# 크게 오른 비율(big)·크게 깨진 비율(bad, 시장보다 20%p 넘게 덜 오름)도 같은 잣대로 본다 —
+# 전체가 평소보다 뚜렷이 다르고, 두 기간 각각 그 기간의 평소와 비교해도 같은 방향일 때만.
+SIG_BIG_ALL, SIG_BIG_EACH = 10.0, 1.15     # 전체 평소+10%p↑, 기간마다 평소×1.15↑
+SIG_BAD_ALL, SIG_BAD_EACH = 6.0, 0.9       # 전체 평소−6%p↓, 기간마다 평소×0.9↓ (방어형)
+SIG_RISK_ALL, SIG_RISK_EACH = 6.0, 1.1     # 전체 평소+6%p↑, 기간마다 평소×1.1↑ (위험형)
+# 화면 표시 순서·이름·색
+SIG_TRAIT = {"hi": ("잘 맞았음", "er-good"), "big": ("급등형", "er-good"),
+             "safe": ("방어형", "er-ok"), "lo": ("반대로 감", "er-bad"),
+             "risk": ("크게 깨지기 쉬움", "er-bad")}
+
+
+def _sig_traits(s_: dict | None, base: dict | None = None) -> list[str]:
+    """과거 성적이 뚜렷한 성격들. 빈 목록이면 반반 — 숫자·이름을 화면에서 뺀다."""
+    if not s_ or not s_.get("fwd12") or s_.get("n_events", 0) < SIG_MIN_N:
+        return []
+    b = base if base is not None else (EARLY_STATS.get("base") or {})
+    out = []
+    side = _clear_side(s_["fwd12"], s_.get("early"), s_.get("late"), s_.get("n_events", 0))
+    if side:
+        out.append(side)
+
+    def per(key, ok_all, ok_each):
+        a, ba = s_["fwd12"].get(key), (b.get("fwd12") or {}).get(key)
+        if a is None or ba is None or not ok_all(a, ba):
+            return False
+        for pk in ("early", "late"):
+            x, bx = (s_.get(pk) or {}), (b.get(pk) or {})
+            if x.get(key) is None or bx.get(key) is None or x.get("n", 0) < 8:
+                continue
+            if not ok_each(x[key], bx[key]):
+                return False
+        return True
+
+    if per("big", lambda a, b_: a >= b_ + SIG_BIG_ALL, lambda x, b_: x >= b_ * SIG_BIG_EACH):
+        out.append("big")
+    if per("bad", lambda a, b_: a <= b_ - SIG_BAD_ALL, lambda x, b_: x <= b_ * SIG_BAD_EACH):
+        out.append("safe")
+    if per("bad", lambda a, b_: a >= b_ + SIG_RISK_ALL, lambda x, b_: x >= b_ * SIG_RISK_EACH):
+        out.append("risk")
+    return out
+
+
+def _sig_side(name: str) -> list[str]:
+    """신호의 뚜렷한 성격(빈 목록 = 반반). 화면 노출 여부를 이 하나로 정한다."""
+    return _sig_traits(_early_stat(name))
 
 
 def _tier_side(t: str | None) -> str | None:
@@ -933,20 +993,35 @@ def _early_rec(name: str) -> str:
     if not s_ or not s_.get("fwd12") or not base:
         return ("<span class='er er-none'>과거 기록 없음 — 오늘부터 쌓습니다</span>")
     f = s_["fwd12"]
-    side = _sig_side(name)
-    if not side:
+    tr = _sig_side(name)
+    if not tr:
         return ""
     e, l_ = s_.get("early") or {}, s_.get("late") or {}
-    both = (f" · 2019년 전 {e['hit']:.0f}% / 후 {l_['hit']:.0f}%"
-            if e.get("hit") is not None and l_.get("hit") is not None else "")
-    if side == "hi":
-        lab, cls, what = "잘 맞았음", "er-good", "시장을 이긴 비율"
-    else:
-        lab, cls, what = "반대로 감", "er-bad", "시장을 이긴 비율이 오히려 낮음"
-    return (f"<span class='er {cls}'>{lab}</span>"
-            f"<span class='er-t'>과거 {s_['n_events']}번 켜짐 → 1년 뒤 {what} "
-            f"<b>{f['hit']:.0f}%</b> (평소 {base['hit']:.0f}%), 중간값 {f.get('median', 0):+.0f}%p "
-            f"(평소 {base.get('median', 0):+.0f}%p){both}</span>")
+
+    bse = EARLY_STATS.get("base") or {}
+
+    def split(key):
+        if e.get(key) is None or l_.get(key) is None:
+            return ""
+        be, bl = (bse.get("early") or {}).get(key), (bse.get("late") or {}).get(key)
+        pe = f"(평소 {be:.0f}%)" if be is not None else ""
+        pl = f"(평소 {bl:.0f}%)" if bl is not None else ""
+        return f" — 2019년 전 {e[key]:.0f}%{pe} / 후 {l_[key]:.0f}%{pl}"
+
+    # 뚜렷한 성격만 한 줄씩 — 반반인 지표는 숫자를 붙이지 않는다
+    rows = {
+        "hi": ("1년 뒤 시장을 이긴 비율", "hit"),
+        "lo": ("1년 뒤 시장을 이긴 비율(오히려 낮음)", "hit"),
+        "big": ("시장보다 20%p 넘게 더 오른 비율", "big"),
+        "safe": ("시장보다 20%p 넘게 덜 오른 비율(낮음)", "bad"),
+        "risk": ("시장보다 20%p 넘게 덜 오른 비율(높음)", "bad"),
+    }
+    badges = "".join(f"<span class='er {SIG_TRAIT[t][1]}'>{SIG_TRAIT[t][0]}</span>" for t in tr)
+    lines = "".join(
+        f"<span class='er-t'>{rows[t][0]} <b>{f[rows[t][1]]:.0f}%</b> "
+        f"(평소 {base.get(rows[t][1], 0):.0f}%){split(rows[t][1])}</span>"
+        for t in tr if f.get(rows[t][1]) is not None)
+    return (f"{badges}<span class='er-t'>과거 {s_['n_events']}번 켜짐 →</span>{lines}")
 
 
 def _early_last(theme: str, name: str) -> str:
@@ -1043,7 +1118,7 @@ def _early_html(r: ThemeResult) -> str:
         return ("<div class='early early-coin'>과거 성적이 반반(50%대)인 신호만 켜져 있어 판단 근거로 "
                 "보지 않습니다: " + " · ".join(_e(n) for n in coin) + "</div>")
     return ("<div class='early'><div class='early-h'>초기 신호 "
-            f"<b>{len(lis)}</b><span>과거에 뚜렷이 잘 맞았거나 뚜렷이 반대로 간 신호만 — "
+            f"<b>{len(lis)}</b><span>과거 성적(이긴 비율·크게 오른 비율·크게 깨진 비율)이 뚜렷한 신호만 — "
             "옆 숫자는 과거에 같은 신호가 켜졌을 때의 성적</span></div>"
             + (f"<div class='es-tier'><b>{_e(stg['tier'])}</b> {trec}</div>" if trec else "")
             + ("<ul>" + "".join(lis) + "</ul>" if lis else "")
@@ -1076,7 +1151,8 @@ def _early_row(i: int, r: ThemeResult, sig: list, stg: dict) -> str:
     chips = ""
     for nm, _ in sig:
         nb = NEW_B if _early_age(r.name, nm)[1] else ""
-        gc = {"hi": "er-good", "lo": "er-bad"}.get(_sig_side(nm) or "", "er-none")
+        _tr = _sig_side(nm)
+        gc = SIG_TRAIT[_tr[0]][1] if _tr else "er-none"
         ref = "" if nm in _FUND else " es-ref"
         chips += f"<span class='es {gc}{ref}'>{nb}{_e(nm)}</span>"
     if stg["tier"] and _tier_rec(stg["tier"]):
@@ -1956,7 +2032,7 @@ CSS = """
 .eb-sl b{color:var(--text-primary)}
 .eb-none{font-size:14px;margin:8px 0 10px;padding:10px 12px;border:1px dashed var(--tv-line);border-radius:8px;
  color:var(--text-secondary)}
-.er.er-bad{color:#d9534f;border-color:#d9534f}.es.er-bad{border-color:#d9534f;background:rgba(217,83,79,.12)}
+.er.er-bad{color:#d9534f;border-color:#d9534f}.es.er-ok{border-color:#5b8def;background:rgba(91,141,239,.12)}.es.er-bad{border-color:#d9534f;background:rgba(217,83,79,.12)}
 .early-coin{font-size:12.5px;color:var(--muted);margin-top:6px}
 .eb-clear{margin-top:10px;border-top:1px solid var(--tv-line);padding-top:8px}
 .eb-clear h3{font-size:13.5px;color:var(--muted);margin:2px 0 6px;font-weight:600}
