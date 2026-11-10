@@ -831,7 +831,12 @@ def f47_dashboard_tabs_and_honesty():
         r2.unpriced = [Signal("U3", "주가", 10, "ok", "d", raw=140.0)]
         ans = db._theme_answer(r2, "이미 반영")
         check("F47 답변: 지금 판단 문단", "지금 판단" in ans, ans[:80])
-        check("F47 답변: 뒤집히는 축 경고", "뒤집혀" in ans, "")
+        check("F47 답변: 뒤집히는 축 경고", "뒤집힌 축" in ans, "")
+        # 백테스트에 아예 없는 축(A5 예산·규제)을 '뒤집힌 축'이라 하면 없는 검증을 지어낸다
+        # (방산 사고: 주도 축 A5 인데 '백테스트에서 뒤집힌 축'으로 표시).
+        check("F47 측정 안 된 축은 '검증하지 못한 축'",
+              "검증하지 못한" in db._axis_doubt("A5") and "뒤집" not in db._axis_doubt("A5"),
+              db._axis_doubt("A5"))
         check("F47 답변: 가격 선반영", "140%p 앞서" in ans, "")
         check("F47 답변: 조건부 승률+모멘텀 결론",
               "모멘텀" in ans and "엣지 밖" in ans, ans[-140:])

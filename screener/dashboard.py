@@ -354,7 +354,7 @@ def _card(r: ThemeResult, rank: int) -> str:
 # 위에 오면 순서가 추천으로 읽히지 않는다.
 VERDICT_ORDER = {
     "볼 만함": 0,      # 촉매도 있고 가격도 아직 — 주도 축이 안정 축
-    "지켜볼 만": 1,    # 조건은 같지만 주도 축의 예측력이 시기 따라 뒤집힘
+    "지켜볼 만": 1,    # 조건은 같지만 주도 축이 안정 축이 아님(뒤집혔거나 검증 불가)
     "이미 반영": 2,    # 촉매는 맞지만 가격이 앞서감
     "이유 약함": 3,    # 눌렸지만 오를 근거 부족
     "지금은 아님": 4,
@@ -380,6 +380,15 @@ def _stable_axes() -> set:
 
 
 STABLE_AXES = _stable_axes()
+
+
+def _axis_doubt(key: str) -> str:
+    """안정 축이 아닌 이유를 사실대로. 백테스트에 아예 없는 축(예산·규제 등)을
+    '뒤집힌 축'이라 부르면 없는 검증 결과를 지어내는 셈이다."""
+    d = AXIS_IC.get(key)
+    if isinstance(d, dict) and d.get("ic") is not None:
+        return "시기에 따라 예측력이 뒤집힌 축"
+    return "과거 데이터가 없어 예측력을 검증하지 못한 축"
 
 
 def _load_report_json(name: str):
@@ -444,7 +453,7 @@ def _history_bits(r: ThemeResult, tag: str) -> list[str]:
             st_ = _bt_stats([x for x in recs if (_rec_top1(x) in STABLE_AXES) == stable])
             if st_ and st_["n"] >= 10 and _verdict_clear(st_):
                 cond = ("낙수·공급·병목처럼 예측력이 검증된 축" if stable
-                        else "시기 따라 예측력이 뒤집히는 축")
+                        else "낙수·공급·병목 밖의 축")
                 parts.append(f"다만 지금처럼 주도 촉매가 {cond}인 경우로 좁히면 승률이 "
                              f"{st_['hit']:.0f}%({st_['n']}번)로 뚜렷해집니다.")
         return parts
@@ -473,7 +482,7 @@ def _history_bits(r: ThemeResult, tag: str) -> list[str]:
         st_ = _bt_stats(sub)
         if st_ and st_["n"] >= 5 and abs(st_["hit"] - base["hit"]) >= 7:
             cond = ("낙수·공급·병목처럼 예측력이 검증된 축" if stable
-                    else "시기 따라 예측력이 뒤집히는 축")
+                    else "낙수·공급·병목 밖의 축")
             tail = "에 불과합니다" if st_["hit"] < base["hit"] else "로 올라갑니다"
             parts.append(f"그러나 지금처럼 주도 촉매가 {cond}인 경우로 좁히면 "
                          f"승률은 {st_['hit']:.0f}%({st_['n']}번, 평균 "
@@ -1396,7 +1405,7 @@ def _theme_answer(r: ThemeResult, tag: str) -> str:
             f"지금 이 테마를 끌고 있는 근거는 {noun}" +
             ("입니다 — 백테스트에서 시기와 무관하게 통해 온 축입니다."
              if stable else
-             "인데, 이 축은 시기에 따라 예측력이 뒤집혀 왔습니다 — "
+             f"인데, 이 축은 {_axis_doubt(tops[0].key)}입니다 — "
              "좋아 보이는 지금 숫자가 이어진다는 보장이 약합니다."))
     px = next((x for x in r.unpriced if x.key == "U3"), None)
     rel = px.raw if px and px.raw is not None else None
@@ -1596,8 +1605,8 @@ def _verdict(r: ThemeResult) -> tuple[str, str, str]:
         if tops[0].key in STABLE_AXES:
             return ("볼 만함", "v-good", f"{why}. 그런데 {price}.{partial}")
         return ("지켜볼 만", "v-warn",
-                f"{why}. 그런데 {price}. 다만 주도 근거({noun})는 백테스트에서 "
-                f"시기에 따라 예측력이 뒤집힌 축이라 확신을 한 단계 낮춥니다."
+                f"{why}. 그런데 {price}. 다만 주도 근거({noun})는 "
+                f"{_axis_doubt(tops[0].key)}이라 확신을 한 단계 낮춥니다."
                 f"{partial}")
     if strong and not cheap:
         return ("이미 반영", "v-warn", f"{why}. 다만 {price}.{partial}")
@@ -1853,7 +1862,7 @@ def _priority_list(ranked: list[ThemeResult]) -> str:
         cls = items[0][1]
         note = {
             "볼 만함": "촉매가 확인되고 가격도 아직 — 먼저 볼 것",
-            "지켜볼 만": "조건은 갖췄지만 주도 축의 예측력이 시기 따라 뒤집힘",
+            "지켜볼 만": "조건은 갖췄지만 주도 축의 예측력이 검증되지 않음",
             "이미 반영": "촉매는 맞지만 주가가 앞서갔다",
             "이유 약함": "눌려 있으나 오를 근거가 부족하다",
             "지금은 아님": "근거도 약하고 가격도 유리하지 않다",
